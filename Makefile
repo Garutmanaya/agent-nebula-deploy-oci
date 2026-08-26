@@ -9,7 +9,7 @@ NAMESPACE ?= agent-nebula
 IMAGE_ARGS = $(if $(IMAGE),$(IMAGE),)
 REGISTRY_ARG = $(if $(REGISTRY),--registry $(REGISTRY),)
 
-.PHONY: help builder images check arm-build multi-build push dry-run test
+.PHONY: help builder images check arm-build multi-build push dry-run test tf-init tf-fmt tf-validate tf-plan tf-apply tf-destroy
 help:
 	@printf '%s\n' \
 	  'builder      - verify/create the Agent Nebula multi-platform buildx builder' \
@@ -19,7 +19,12 @@ help:
 	  'multi-build  - build amd64+arm64; requires registry push, use make push-multi manually' \
 	  'push         - build and push ARM64 images to REGISTRY' \
 	  'dry-run      - print ARM64 build commands without executing them' \
-	  'test         - run repository unit tests'
+	  'test         - run repository unit tests' \
+	  'tf-init      - initialize OCI Terraform root' \
+	  'tf-validate  - format-check and validate OCI Terraform' \
+	  'tf-plan      - create OCI Terraform execution plan' \
+	  'tf-apply     - apply OCI Terraform configuration' \
+	  'tf-destroy   - destroy OCI Terraform-managed resources'
 
 builder:
 	./scripts/check-builder.sh
@@ -44,3 +49,25 @@ dry-run:
 
 test:
 	$(PYTHON) -m unittest discover -s tests -v
+
+
+TF_DIR ?= terraform/oci
+
+tf-init:
+	terraform -chdir=$(TF_DIR) init
+
+tf-fmt:
+	terraform -chdir=$(TF_DIR) fmt -recursive
+
+tf-validate: tf-init
+	terraform -chdir=$(TF_DIR) fmt -check -recursive
+	terraform -chdir=$(TF_DIR) validate
+
+tf-plan: tf-init
+	terraform -chdir=$(TF_DIR) plan
+
+tf-apply: tf-init
+	terraform -chdir=$(TF_DIR) apply
+
+tf-destroy: tf-init
+	terraform -chdir=$(TF_DIR) destroy

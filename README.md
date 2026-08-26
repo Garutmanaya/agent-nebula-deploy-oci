@@ -97,8 +97,22 @@ The manually created Ubuntu ARM64 VM can be prepared with:
 ./scripts/oci-bootstrap.sh
 ```
 
-The current manual deployment remains the reference. Terraform should be added only after the full
-runtime has been validated and the manual VM is intentionally destroyed/recreated.
+The current manual deployment remains the reference. A matching Terraform root now lives under
+`terraform/oci/`. We will continue validating the runtime manually first, then destroy the prototype
+and use this Terraform configuration to prove clean recreation from infrastructure-as-code.
+
+```bash
+cp terraform/oci/terraform.tfvars.example terraform/oci/terraform.tfvars
+make tf-init
+make tf-validate
+make tf-plan
+# after manual validation is complete:
+make tf-apply
+```
+
+Terraform owns the OCI VCN, subnet, Internet Gateway, route/security rules, A1 VM and cloud-init host
+bootstrap. It does not own Agent Nebula Docker containers; those remain in the image/deployment
+pipeline.
 
 ## Why ARM is centralized here
 

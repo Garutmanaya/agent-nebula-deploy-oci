@@ -1,0 +1,11 @@
+region           = "us-ashburn-1"
+compartment_ocid = "ocid1.compartment.oc1..replace-me"
+ssh_public_key_path = "~/.ssh/agent_nebula_oci.pub"
+
+# OCI Always Free Ampere target.
+shape      = "VM.Standard.A1.Flex"
+ocpus      = 2
+memory_gbs = 12
+
+# Public SSH is intentionally bootstrap-only. Prefer your current IP/32 when possible.
+ssh_source_cidr = "0.0.0.0/0"
