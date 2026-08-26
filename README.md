@@ -66,28 +66,66 @@ is inspection/export/testing. Normal OCI publication should use `push`.
 
 ## Registry publication
 
-The registry is intentionally provider-neutral. For OCI Registry, set the complete registry host
-for the tenancy/region and authenticate Docker separately:
+Registry publication is config driven through `config/registry.json`. The default template uses
+GitHub Container Registry (GHCR), which is convenient when the Agent Nebula repositories are hosted
+on GitHub. Set the GitHub user or organization once:
 
-```bash
-export REGISTRY='<region-key>.ocir.io'
-export NAMESPACE='<oci-object-storage-namespace>/agent-nebula'
-make push IMAGE=policy REGISTRY="$REGISTRY" NAMESPACE="$NAMESPACE" TAG=dev
+```json
+{
+  "registry": {
+    "provider": "ghcr",
+    "host": "ghcr.io",
+    "namespace": "YOUR_GITHUB_USER_OR_ORG"
+  }
+}
 ```
 
-For a true multi-architecture image (useful for both local/Cloud Run amd64 and OCI arm64):
+Authenticate Docker once before pushing. Use a GitHub token with package write permission and never
+store the token in this repository:
 
 ```bash
-python3 scripts/image_pipeline.py push policy \
-  --workspace .. \
-  --registry "$REGISTRY" \
-  --namespace "$NAMESPACE" \
-  --tag dev \
-  --platform linux/amd64 \
-  --platform linux/arm64
+echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 ```
 
-Buildx pushes a manifest list under one tag; Docker pulls the correct architecture automatically.
+Inspect the configured destination and generated tags:
+
+```bash
+make registry RELEASE=0.5.0
+```
+
+A release produces explicit ARM64 tags such as:
+
+```text
+ghcr.io/<namespace>/nebula-policy:0.5.0-arm64
+ghcr.io/<namespace>/nebula-policy:latest-arm64
+```
+
+Build one image locally:
+
+```bash
+make arm-build IMAGE=policy RELEASE=0.5.0
+```
+
+Build and push one image to the configured registry:
+
+```bash
+make arm-push IMAGE=policy RELEASE=0.5.0
+```
+
+Build or push every **enabled** image in `config/images.json`:
+
+```bash
+make arm-build IMAGE=all RELEASE=0.5.0
+make arm-push  IMAGE=all RELEASE=0.5.0
+```
+
+`IMAGE=all` intentionally processes enabled entries only. Repositories stay disabled until their
+Dockerfile path and required sibling build contexts have been verified. This prevents a bulk release
+from silently building an incorrect contract.
+
+CLI/environment overrides for registry host and namespace remain available for CI, but normal local
+operation should use the checked-in registry config. Registry credentials are never stored in the
+config file.
 
 ## OCI host bootstrap
 

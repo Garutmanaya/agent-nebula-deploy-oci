@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Central multi-architecture image build/push orchestration for Agent Nebula.
+"""Central ARM/multi-architecture image build/push orchestration for Agent Nebula.
 
-Application repositories continue to own their Dockerfiles. This repository owns
-platform selection, image naming, tags, registry publication, and build-context wiring.
+Application repositories own their Dockerfiles. This repository owns platform
+selection, release tags, registry publication, and build-context wiring.
 """
 from __future__ import annotations
 
@@ -26,6 +26,15 @@ class ImageSpec:
     context: str = "."
     build_contexts: dict[str, str] = field(default_factory=dict)
     enabled: bool = True
+
+
+@dataclass(frozen=True)
+class RegistryConfig:
+    provider: str
+    host: str
+    namespace: str
+    architecture: str
+    tag_templates: tuple[str, ...]
 
 
 def run(command: list[str], *, cwd: Path | None = None, dry_run: bool = False) -> None:
@@ -58,6 +67,26 @@ def load_manifest(path: Path) -> tuple[dict[str, Any], list[ImageSpec]]:
     return payload.get("defaults", {}), specs
 
 
+def load_registry(path: Path) -> RegistryConfig:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("schema_version") != 1:
+        raise ValueError("Unsupported registry config schema_version")
+    registry = payload.get("registry", {})
+    release = payload.get("release", {})
+    config = RegistryConfig(
+        provider=registry.get("provider", ""),
+        host=registry.get("host", ""),
+        namespace=registry.get("namespace", ""),
+        architecture=release.get("architecture", "arm64"),
+        tag_templates=tuple(release.get("tag_templates", ["{release}-{arch}"])),
+    )
+    if not config.host:
+        raise ValueError("Registry host is required in registry config")
+    if not config.namespace:
+        raise ValueError("Registry namespace is required in registry config")
+    return config
+
+
 def resolve_repo(workspace: Path, spec: ImageSpec) -> Path:
     repo = (workspace / spec.repository).resolve()
     if not repo.is_dir():
@@ -70,8 +99,10 @@ def resolve_repo(workspace: Path, spec: ImageSpec) -> Path:
 
 def select(specs: list[ImageSpec], names: list[str]) -> list[ImageSpec]:
     enabled = [spec for spec in specs if spec.enabled]
-    if not names:
+    if not names or names == ["all"]:
         return enabled
+    if "all" in names:
+        raise ValueError("IMAGE=all cannot be combined with individual image names")
     wanted = set(names)
     known = {spec.name for spec in specs}
     unknown = wanted - known
@@ -92,12 +123,22 @@ def image_ref(registry: str, namespace: str, image: str, tag: str) -> str:
     return f"{prefix}/{ns}/{image}:{tag}" if ns else f"{prefix}/{image}:{tag}"
 
 
+def release_tags(config: RegistryConfig, release: str) -> list[str]:
+    if not release:
+        raise ValueError("Release cannot be empty")
+    tags = [
+        template.format(release=release, arch=config.architecture)
+        for template in config.tag_templates
+    ]
+    # Preserve order while preventing duplicate tags from custom templates.
+    return list(dict.fromkeys(tags))
+
+
 def build_command(
     *,
     spec: ImageSpec,
     repo: Path,
-    workspace: Path,
-    image: str,
+    images: list[str],
     platforms: list[str],
     push: bool,
     load: bool,
@@ -106,8 +147,9 @@ def build_command(
         "docker", "buildx", "build",
         "--platform", ",".join(platforms),
         "--file", spec.dockerfile,
-        "--tag", image,
     ]
+    for image in images:
+        command.extend(["--tag", image])
     for name, relative_path in spec.build_contexts.items():
         context_path = (repo / relative_path).resolve()
         if not context_path.exists():
@@ -125,13 +167,14 @@ def build_command(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=("list", "check", "build", "push"))
+    parser.add_argument("action", choices=("list", "registry", "check", "build", "push"))
     parser.add_argument("images", nargs="*")
     parser.add_argument("--manifest", default="config/images.json")
+    parser.add_argument("--registry-config", default="config/registry.json")
     parser.add_argument("--workspace", default="..", help="Directory containing sibling Agent Nebula repositories")
-    parser.add_argument("--registry", default=os.getenv("AN_OCI_REGISTRY", ""))
-    parser.add_argument("--namespace", default=os.getenv("AN_OCI_REGISTRY_NAMESPACE", "agent-nebula"))
-    parser.add_argument("--tag", default=os.getenv("AN_IMAGE_TAG"))
+    parser.add_argument("--registry", default=os.getenv("AN_OCI_REGISTRY"))
+    parser.add_argument("--namespace", default=os.getenv("AN_OCI_REGISTRY_NAMESPACE"))
+    parser.add_argument("--release", default=os.getenv("AN_RELEASE", "dev"))
     parser.add_argument("--platform", action="append", dest="platforms")
     parser.add_argument("--load", action="store_true", help="Load a single-platform build into local Docker")
     parser.add_argument("--dry-run", action="store_true")
@@ -142,13 +185,27 @@ def main() -> int:
     args = parse_args()
     root = Path(__file__).resolve().parents[1]
     manifest_path = (root / args.manifest).resolve()
+    registry_path = (root / args.registry_config).resolve()
     workspace = Path(args.workspace).resolve()
     defaults, specs = load_manifest(manifest_path)
+    registry_config = load_registry(registry_path)
+
+    # Explicit CLI/env overrides remain useful for CI, but normal operation is config driven.
+    registry_host = args.registry or registry_config.host
+    registry_namespace = args.namespace or registry_config.namespace
 
     if args.action == "list":
         for spec in specs:
             state = "enabled" if spec.enabled else "disabled"
             print(f"{spec.name:14} {state:8} {spec.repository}/{spec.dockerfile} -> {spec.image}")
+        return 0
+
+    if args.action == "registry":
+        print(f"provider:  {registry_config.provider}")
+        print(f"registry:  {registry_host}")
+        print(f"namespace: {registry_namespace}")
+        print(f"arch:      {registry_config.architecture}")
+        print(f"tags:      {', '.join(release_tags(registry_config, args.release))}")
         return 0
 
     selected = select(specs, args.images)
@@ -166,23 +223,26 @@ def main() -> int:
         return 0
 
     platforms = args.platforms or defaults.get("platforms", ["linux/arm64"])
-    tag = args.tag or defaults.get("tag", "dev")
+    tags = release_tags(registry_config, args.release)
     push = args.action == "push"
-    if push and not args.registry:
-        raise ValueError("--registry or AN_OCI_REGISTRY is required for push")
+    if push and registry_namespace.startswith("CHANGE_ME"):
+        raise ValueError(
+            "Configure registry.namespace in config/registry.json before pushing images"
+        )
 
     for spec in selected:
         repo = resolve_repo(workspace, spec)
-        target = (
-            image_ref(args.registry, args.namespace, spec.image, tag)
-            if push or args.registry
-            else f"agent-nebula/{spec.image}:{tag}"
-        )
+        if push:
+            targets = [
+                image_ref(registry_host, registry_namespace, spec.image, tag)
+                for tag in tags
+            ]
+        else:
+            targets = [f"agent-nebula/{spec.image}:{tag}" for tag in tags]
         command = build_command(
             spec=spec,
             repo=repo,
-            workspace=workspace,
-            image=target,
+            images=targets,
             platforms=platforms,
             push=push,
             load=args.load,
