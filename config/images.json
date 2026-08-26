@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "defaults": {
+    "platforms": ["linux/arm64"],
+    "tag": "dev"
+  },
+  "images": [
+    {
+      "name": "policy",
+      "repository": "agent-nebula-policy",
+      "image": "nebula-policy",
+      "dockerfile": "docker/Dockerfile",
+      "context": ".",
+      "build_contexts": {
+        "agent_nebula_policy_sdk": "../agent-nebula-policy-sdk"
+      },
+      "enabled": true
+    },
+    {
+      "name": "core",
+      "repository": "agent-nebula-core",
+      "image": "nebula-core",
+      "dockerfile": "docker/Dockerfile",
+      "context": ".",
+      "enabled": false,
+      "note": "Enable after confirming the Dockerfile path and sibling build contexts."
+    },
+    {
+      "name": "oauth",
+      "repository": "agent-nebula-oauth",
+      "image": "nebula-oauth",
+      "dockerfile": "docker/Dockerfile",
+      "context": ".",
+      "enabled": false,
+      "note": "Enable after confirming the Dockerfile path and sibling build contexts."
+    },
+    {
+      "name": "explorer",
+      "repository": "agent-nebula-explorer",
+      "image": "nebula-explorer",
+      "dockerfile": "docker/Dockerfile",
+      "context": ".",
+      "enabled": false,
+      "note": "Enable after confirming the Dockerfile path and sibling build contexts."
+    },
+    {
+      "name": "playground",
+      "repository": "agent-nebula-playground",
+      "image": "nebula-playground",
+      "dockerfile": "docker/Dockerfile",
+      "context": ".",
+      "enabled": false,
+      "note": "Playground currently produces multiple images; add each confirmed Dockerfile as a separate manifest entry."
+    },
+    {
+      "name": "studio",
+      "repository": "agent-nebula-studio",
+      "image": "nebula-studio",
+      "dockerfile": "docker/Dockerfile",
+      "context": ".",
+      "enabled": false,
+      "note": "Studio is planned for Cloud Run; retain here only if an ARM OCI image is required."
+    }
+  ]
+}
