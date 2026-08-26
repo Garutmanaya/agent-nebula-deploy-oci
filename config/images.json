@@ -1,8 +1,7 @@
 {
   "schema_version": 1,
   "defaults": {
-    "platforms": ["linux/arm64"],
-    "tag": "dev"
+    "platforms": ["linux/arm64"]
   },
   "images": [
     {
@@ -20,19 +19,25 @@
       "name": "core",
       "repository": "agent-nebula-core",
       "image": "nebula-core",
-      "dockerfile": "docker/Dockerfile",
+      "dockerfile": "docker/nebula-core/Dockerfile",
       "context": ".",
-      "enabled": false,
-      "note": "Enable after confirming the Dockerfile path and sibling build contexts."
+      "build_contexts": {
+        "agent_nebula_utils": "../agent-nebula-utils",
+        "agent_nebula_sdk": "../agent-nebula-sdk",
+        "agent_nebula_plugins": "../agent-nebula-plugins",
+        "agent_nebula_policy_sdk": "../agent-nebula-policy-sdk",
+        "agent_nebula_runtime": "../agent-nebula-runtime",
+        "agent_nebula_connect": "../agent-nebula-connect"
+      },
+      "enabled": true
     },
     {
-      "name": "oauth",
-      "repository": "agent-nebula-oauth",
-      "image": "nebula-oauth",
-      "dockerfile": "docker/Dockerfile",
+      "name": "console",
+      "repository": "agent-nebula-core",
+      "image": "nebula-console",
+      "dockerfile": "docker/nebula-console/Dockerfile",
       "context": ".",
-      "enabled": false,
-      "note": "Enable after confirming the Dockerfile path and sibling build contexts."
+      "enabled": true
     },
     {
       "name": "explorer",
@@ -40,26 +45,62 @@
       "image": "nebula-explorer",
       "dockerfile": "docker/Dockerfile",
       "context": ".",
-      "enabled": false,
-      "note": "Enable after confirming the Dockerfile path and sibling build contexts."
+      "build_contexts": {
+        "agent_nebula_sdk": "../agent-nebula-sdk",
+        "agent_nebula_runtime": "../agent-nebula-runtime",
+        "agent_nebula_connect": "../agent-nebula-connect",
+        "agent_nebula_utils": "../agent-nebula-utils"
+      },
+      "enabled": true
     },
     {
-      "name": "playground",
+      "name": "oauth",
+      "repository": "agent-nebula-oauth",
+      "image": "nebula-oauth",
+      "dockerfile": "docker/Dockerfile",
+      "context": ".",
+      "build_contexts": {
+        "agent_nebula_sdk": "../agent-nebula-sdk",
+        "agent_nebula_policy_sdk": "../agent-nebula-policy-sdk",
+        "agent_nebula_utils": "../agent-nebula-utils"
+      },
+      "enabled": true
+    },
+    {
+      "name": "playground-container",
       "repository": "agent-nebula-playground",
       "image": "nebula-playground",
-      "dockerfile": "docker/Dockerfile",
+      "dockerfile": "docker/playground-container/Dockerfile",
       "context": ".",
-      "enabled": false,
-      "note": "Playground currently produces multiple images; add each confirmed Dockerfile as a separate manifest entry."
+      "build_contexts": {
+        "agent_nebula_utils": "../agent-nebula-utils",
+        "agent_nebula_connect": "../agent-nebula-connect",
+        "agent_nebula_runtime": "../agent-nebula-runtime",
+        "agent_nebula_sdk": "../agent-nebula-sdk"
+      },
+      "enabled": true
     },
     {
-      "name": "studio",
-      "repository": "agent-nebula-studio",
-      "image": "nebula-studio",
-      "dockerfile": "docker/Dockerfile",
+      "name": "playground-backend",
+      "repository": "agent-nebula-playground",
+      "image": "nebula-playground-backend",
+      "dockerfile": "docker/playground-backend/Dockerfile",
       "context": ".",
-      "enabled": false,
-      "note": "Studio is planned for Cloud Run; retain here only if an ARM OCI image is required."
+      "build_contexts": {
+        "agent_nebula_utils": "../agent-nebula-utils",
+        "agent_nebula_connect": "../agent-nebula-connect",
+        "agent_nebula_runtime": "../agent-nebula-runtime",
+        "agent_nebula_sdk": "../agent-nebula-sdk"
+      },
+      "enabled": true
+    },
+    {
+      "name": "playground-ui",
+      "repository": "agent-nebula-playground",
+      "image": "nebula-playground-ui",
+      "dockerfile": "docker/playground-ui/Dockerfile",
+      "context": ".",
+      "enabled": true
     }
   ]
 }

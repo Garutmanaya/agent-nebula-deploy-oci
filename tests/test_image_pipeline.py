@@ -45,16 +45,16 @@ class ImagePipelineTests(unittest.TestCase):
             provider="ghcr",
             host="ghcr.io",
             namespace="example",
-            architecture="arm64",
             tag_templates=("{release}-{arch}", "latest-{arch}"),
         )
-        self.assertEqual(module.release_tags(cfg, "0.5.0"), ["0.5.0-arm64", "latest-arm64"])
+        self.assertEqual(module.release_tags(cfg, "0.5.0", "arm64"), ["0.5.0-arm64", "latest-arm64"])
+        self.assertEqual(module.release_tags(cfg, "0.5.0", "amd64"), ["0.5.0-amd64", "latest-amd64"])
 
     def test_registry_config(self):
         payload = {
             "schema_version": 1,
             "registry": {"provider": "ghcr", "host": "ghcr.io", "namespace": "example"},
-            "release": {"architecture": "arm64", "tag_templates": ["{release}-{arch}"]},
+            "release": {"tag_templates": ["{release}-{arch}"]},
         }
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "registry.json"

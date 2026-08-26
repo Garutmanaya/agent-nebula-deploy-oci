@@ -4,27 +4,30 @@ MANIFEST ?= config/images.json
 REGISTRY_CONFIG ?= config/registry.json
 IMAGE ?= all
 RELEASE ?= dev
-PLATFORM ?= linux/arm64
 
 PIPELINE = $(PYTHON) scripts/image_pipeline.py
 COMMON_ARGS = --manifest $(MANIFEST) --registry-config $(REGISTRY_CONFIG) --workspace $(WORKSPACE)
 
-.PHONY: help builder images registry check arm-build arm-push dry-run test tf-init tf-fmt tf-validate tf-plan tf-apply tf-destroy
+.PHONY: help builder images registry check arm-build amd-build arm-push amd-push dry-run-arm dry-run-amd test tf-init tf-fmt tf-validate tf-plan tf-apply tf-destroy
+
 help:
 	@printf '%s\n' \
-	  'builder      - verify/create the Agent Nebula multi-platform buildx builder' \
-	  'images       - list configured image builds' \
-	  'registry     - show configured image registry/release tags' \
-	  'check        - validate selected/all enabled repositories (IMAGE=all)' \
-	  'arm-build    - build/load selected/all ARM64 images (IMAGE=all RELEASE=0.1.0)' \
-	  'arm-push     - build/push selected/all ARM64 images to configured registry' \
-	  'dry-run      - print ARM64 commands without executing them' \
-	  'test         - run repository unit tests' \
-	  'tf-init      - initialize OCI Terraform root' \
-	  'tf-validate  - format-check and validate OCI Terraform' \
-	  'tf-plan      - create OCI Terraform execution plan' \
-	  'tf-apply     - apply OCI Terraform configuration' \
-	  'tf-destroy   - destroy OCI Terraform-managed resources'
+	  'builder       Verify/create the multi-platform buildx builder' \
+	  'images        List configured images' \
+	  'registry      Show registry and release tags (ARCH=arm64|amd64)' \
+	  'check         Validate selected images/repositories (IMAGE=all)' \
+	  'arm-build     Build/load ARM64 images locally' \
+	  'amd-build     Build/load AMD64 images locally' \
+	  'arm-push      Build/push ARM64 images to configured registry' \
+	  'amd-push      Build/push AMD64 images to configured registry' \
+	  'dry-run-arm   Print ARM64 build commands' \
+	  'dry-run-amd   Print AMD64 build commands' \
+	  'test          Run unit tests' \
+	  'tf-init       Initialize OCI Terraform' \
+	  'tf-validate   Validate OCI Terraform' \
+	  'tf-plan       Plan OCI Terraform' \
+	  'tf-apply      Apply OCI Terraform' \
+	  'tf-destroy    Destroy OCI Terraform resources'
 
 builder:
 	./scripts/check-builder.sh
@@ -33,22 +36,28 @@ images:
 	$(PIPELINE) list $(COMMON_ARGS)
 
 registry:
-	$(PIPELINE) registry $(COMMON_ARGS) --release $(RELEASE)
+	$(PIPELINE) registry $(COMMON_ARGS) --release $(RELEASE) --arch $(or $(ARCH),arm64)
 
 check:
 	$(PIPELINE) check $(IMAGE) $(COMMON_ARGS)
 
 arm-build:
-	$(PIPELINE) build $(IMAGE) $(COMMON_ARGS) --platform $(PLATFORM) --release $(RELEASE) --load
+	$(PIPELINE) build $(IMAGE) $(COMMON_ARGS) --platform linux/arm64 --arch arm64 --release $(RELEASE) --load
+
+amd-build:
+	$(PIPELINE) build $(IMAGE) $(COMMON_ARGS) --platform linux/amd64 --arch amd64 --release $(RELEASE) --load
 
 arm-push:
-	$(PIPELINE) push $(IMAGE) $(COMMON_ARGS) --platform $(PLATFORM) --release $(RELEASE)
+	$(PIPELINE) push $(IMAGE) $(COMMON_ARGS) --platform linux/arm64 --arch arm64 --release $(RELEASE)
 
-# Backward-compatible alias for the earlier target.
-push: arm-push
+amd-push:
+	$(PIPELINE) push $(IMAGE) $(COMMON_ARGS) --platform linux/amd64 --arch amd64 --release $(RELEASE)
 
-dry-run:
-	$(PIPELINE) build $(IMAGE) $(COMMON_ARGS) --platform $(PLATFORM) --release $(RELEASE) --dry-run
+dry-run-arm:
+	$(PIPELINE) build $(IMAGE) $(COMMON_ARGS) --platform linux/arm64 --arch arm64 --release $(RELEASE) --dry-run
+
+dry-run-amd:
+	$(PIPELINE) build $(IMAGE) $(COMMON_ARGS) --platform linux/amd64 --arch amd64 --release $(RELEASE) --dry-run
 
 test:
 	$(PYTHON) -m unittest discover -s tests -v

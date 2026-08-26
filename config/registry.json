@@ -6,7 +6,6 @@
     "namespace": "CHANGE_ME_GITHUB_USER_OR_ORG"
   },
   "release": {
-    "architecture": "arm64",
     "tag_templates": [
       "{release}-{arch}",
       "latest-{arch}"

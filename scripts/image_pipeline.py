@@ -33,7 +33,6 @@ class RegistryConfig:
     provider: str
     host: str
     namespace: str
-    architecture: str
     tag_templates: tuple[str, ...]
 
 
@@ -77,7 +76,6 @@ def load_registry(path: Path) -> RegistryConfig:
         provider=registry.get("provider", ""),
         host=registry.get("host", ""),
         namespace=registry.get("namespace", ""),
-        architecture=release.get("architecture", "arm64"),
         tag_templates=tuple(release.get("tag_templates", ["{release}-{arch}"])),
     )
     if not config.host:
@@ -123,11 +121,11 @@ def image_ref(registry: str, namespace: str, image: str, tag: str) -> str:
     return f"{prefix}/{ns}/{image}:{tag}" if ns else f"{prefix}/{image}:{tag}"
 
 
-def release_tags(config: RegistryConfig, release: str) -> list[str]:
+def release_tags(config: RegistryConfig, release: str, arch: str) -> list[str]:
     if not release:
         raise ValueError("Release cannot be empty")
     tags = [
-        template.format(release=release, arch=config.architecture)
+        template.format(release=release, arch=arch)
         for template in config.tag_templates
     ]
     # Preserve order while preventing duplicate tags from custom templates.
@@ -176,6 +174,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--namespace", default=os.getenv("AN_OCI_REGISTRY_NAMESPACE"))
     parser.add_argument("--release", default=os.getenv("AN_RELEASE", "dev"))
     parser.add_argument("--platform", action="append", dest="platforms")
+    parser.add_argument("--arch", choices=("arm64", "amd64"), default="arm64")
     parser.add_argument("--load", action="store_true", help="Load a single-platform build into local Docker")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
@@ -204,8 +203,8 @@ def main() -> int:
         print(f"provider:  {registry_config.provider}")
         print(f"registry:  {registry_host}")
         print(f"namespace: {registry_namespace}")
-        print(f"arch:      {registry_config.architecture}")
-        print(f"tags:      {', '.join(release_tags(registry_config, args.release))}")
+        print(f"arch:      {args.arch}")
+        print(f"tags:      {', '.join(release_tags(registry_config, args.release, args.arch))}")
         return 0
 
     selected = select(specs, args.images)
@@ -223,7 +222,7 @@ def main() -> int:
         return 0
 
     platforms = args.platforms or defaults.get("platforms", ["linux/arm64"])
-    tags = release_tags(registry_config, args.release)
+    tags = release_tags(registry_config, args.release, args.arch)
     push = args.action == "push"
     if push and registry_namespace.startswith("CHANGE_ME"):
         raise ValueError(
