@@ -1,0 +1,177 @@
+services:
+  nebula-database:
+    image: ${ANU_DEPLOY_POSTGRES_IMAGE}
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      POSTGRES_DB: ${ANU_CORE_DATABASE_NAME}
+      POSTGRES_USER: ${ANU_CORE_DATABASE_USER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/database-password
+      ANU_CORE_DATABASE_PORT: ${ANU_CORE_DATABASE_PORT}
+    entrypoint: ["/bin/bash", "/usr/local/bin/postgres-entrypoint-tls.sh"]
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/var/lib/postgresql/tls/server.crt
+      - -c
+      - ssl_key_file=/var/lib/postgresql/tls/server.key
+      - -c
+      - ssl_ca_file=/var/lib/postgresql/tls/root-ca.crt
+      - -c
+      - password_encryption=scram-sha-256
+    volumes:
+      - ${ANU_HOME}/database/data:/var/lib/postgresql/data
+      # Preserve the proven pre-migration PostgreSQL TLS flow. The stock Postgres image has no
+      # Agent Nebula runtime bootstrap, so durable host certificates are mounted into its existing
+      # container-local staging path and the wrapper copies them to the PostgreSQL-owned TLS dir.
+      - ${ANU_HOME}/database/certs/server.crt:/run/agent-nebula/database/pki/server.crt:ro
+      - ${ANU_HOME}/database/certs/server.key:/run/agent-nebula/database/pki/server.key:ro
+      - ${ANU_HOME}/nebula-ca/certs/root-ca.crt:/run/agent-nebula/database/pki/root-ca.crt:ro
+      - ${ANU_HOME}/database/secrets/service-password:/run/secrets/database-password:ro
+      - ./postgres-entrypoint-tls.sh:/usr/local/bin/postgres-entrypoint-tls.sh:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          PGPASSWORD=$$(cat /run/secrets/database-password)
+          psql
+          "host=localhost port=$${ANU_CORE_DATABASE_PORT} sslmode=require dbname=$${POSTGRES_DB} user=$${POSTGRES_USER}"
+          -tAc "SELECT 1" | grep -q 1
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    image: ${ANU_DEPLOY_MIGRATION_IMAGE}
+    user: "${ANU_CONTAINER_UID}:${ANU_CONTAINER_GID}"
+    network_mode: host
+    environment: &core_environment
+      ANU_HOME: ${ANU_HOME}
+      ANU_RUNTIME_HOME: ${ANU_RUNTIME_HOME}
+      ANU_INSTANCE_ROOT: ${ANU_HOME}/nebula/core
+      ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/nebula/core
+      ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
+      ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
+      ANU_CORE_PUBLIC_UI_URL: ${ANU_CORE_PUBLIC_UI_URL}
+      ANU_CORE_PORT: ${ANU_CORE_PORT}
+      ANU_CORE_SSL_ENABLED: ${ANU_CORE_SSL_ENABLED}
+      ANU_CORE_CONSOLE_PORT: ${ANU_CORE_CONSOLE_PORT}
+      ANU_CORE_CONSOLE_SSL_ENABLED: ${ANU_CORE_CONSOLE_SSL_ENABLED}
+      ANU_CORE_PUBLIC_API_URL: ${ANU_CORE_PUBLIC_API_URL}
+      ANU_CORE_DATABASE_HOST: ${ANU_CORE_DATABASE_HOST}
+      ANU_CORE_DATABASE_PORT: ${ANU_CORE_DATABASE_PORT}
+      ANU_CORE_DATABASE_NAME: ${ANU_CORE_DATABASE_NAME}
+      ANU_CORE_DATABASE_USER: ${ANU_CORE_DATABASE_USER}
+      ANU_CORE_DATABASE_PASSWORD_FILE: ${ANU_HOME}/nebula/core/secrets/database/service-password
+      ANU_CORE_DATABASE_SSL_MODE: ${ANU_CORE_DATABASE_SSL_MODE}
+      ANU_CORE_HEALTH_EXPLORER_URL: ${ANU_CORE_HEALTH_EXPLORER_URL}
+      ANU_CORE_HEALTH_PLAYGROUND_URL: ${ANU_CORE_HEALTH_PLAYGROUND_URL}
+      ANU_POLICY_SERVICE_URL: ${ANU_POLICY_SERVICE_URL}
+    volumes: &core_volumes
+      - ${ANU_HOME}/nebula/core/secrets:${ANU_HOME}/nebula/core/secrets:ro
+      - ${ANU_HOME}/nebula/core/certs:${ANU_HOME}/nebula/core/certs:ro
+      - ${ANU_HOME}/nebula/core/data:${ANU_HOME}/nebula/core/data
+      - ${ANU_HOME}/nebula/core/logs:${ANU_HOME}/nebula/core/logs
+      - ${ANU_HOME}/nebula/core/tmp:${ANU_HOME}/nebula/core/tmp
+      - ${ANU_HOME}/nebula-ca/certs:${ANU_HOME}/nebula-ca/certs:ro
+      - ${ANU_HOME}/nebula-ca/secrets:${ANU_HOME}/nebula-ca/secrets:ro
+    command:
+      - python
+      - scripts/database/migrate.py
+      - --config
+      - ${ANU_RUNTIME_HOME}/nebula/core/application.conf
+    depends_on:
+      nebula-database:
+        condition: service_healthy
+    restart: "no"
+
+  nebula-core:
+    image: ${ANU_DEPLOY_CORE_IMAGE}
+    restart: unless-stopped
+    user: "${ANU_CONTAINER_UID}:${ANU_CONTAINER_GID}"
+    network_mode: host
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 524288
+    environment:
+      <<: *core_environment
+    volumes: *core_volumes
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  nebula-explorer:
+    image: ${ANU_DEPLOY_EXPLORER_IMAGE}
+    profiles: ["explorer"]
+    restart: unless-stopped
+    user: "${ANU_CONTAINER_UID}:${ANU_CONTAINER_GID}"
+    network_mode: host
+    environment:
+      ANU_HOME: ${ANU_HOME}
+      ANU_RUNTIME_HOME: ${ANU_RUNTIME_HOME}
+      ANU_INSTANCE_ROOT: ${ANU_HOME}/explorer
+      ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/explorer
+      ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
+      ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
+      ANU_EXPLORER_MODE: ${ANU_EXPLORER_MODE}
+      ANU_NEBULA_URL: ${ANU_NEBULA_URL}
+      ANU_OAUTH_PUBLIC_URL: ${ANU_OAUTH_PUBLIC_URL}
+      ANU_EXPLORER_PUBLIC_URL: ${ANU_EXPLORER_PUBLIC_URL}
+      ANU_EXPLORER_ALLOWED_ORIGINS: ${ANU_EXPLORER_ALLOWED_ORIGINS}
+      ANU_EXPLORER_PORT: ${ANU_EXPLORER_PORT}
+      ANU_EXPLORER_HOST: ${ANU_EXPLORER_HOST}
+      ANU_EXPLORER_AGENT_ID: ${ANU_EXPLORER_AGENT_ID}
+      ANU_EXPLORER_AGENT_NAME: ${ANU_EXPLORER_AGENT_NAME}
+      ANU_EXPLORER_AGENT_DESCRIPTION: ${ANU_EXPLORER_AGENT_DESCRIPTION}
+      ANU_EXPLORER_AGENT_VERSION: ${ANU_EXPLORER_AGENT_VERSION}
+      ANU_EXPLORER_CAPABILITIES: ${ANU_EXPLORER_CAPABILITIES}
+      ANU_EXPLORER_TAGS: ${ANU_EXPLORER_TAGS}
+      ANU_EXPLORER_TRACE_ENABLED: ${ANU_EXPLORER_TRACE_ENABLED}
+      ANU_EXPLORER_BROWSER_AUTH_REQUIRED: ${ANU_EXPLORER_BROWSER_AUTH_REQUIRED}
+      ANU_EXPLORER_QUERY_LLM_ENABLED: ${ANU_EXPLORER_QUERY_LLM_ENABLED}
+      ANU_EXPLORER_INPUT_MAPPER_LLM_ENABLED: ${ANU_EXPLORER_INPUT_MAPPER_LLM_ENABLED}
+      ANU_EXPLORER_PRESENTATION_LLM_ENABLED: ${ANU_EXPLORER_PRESENTATION_LLM_ENABLED}
+      ANU_EXPLORER_SECURITY_CONTEXT_VISIBLE: ${ANU_EXPLORER_SECURITY_CONTEXT_VISIBLE}
+      ANU_ONBOARDING_API_KEY_FILENAME: ${ANU_ONBOARDING_API_KEY_FILENAME}
+    volumes:
+      - ${ANU_HOME}/explorer/secrets:${ANU_HOME}/explorer/secrets:rw
+      - ${ANU_HOME}/explorer/certs:${ANU_HOME}/explorer/certs:ro
+      - ${ANU_HOME}/explorer/data:${ANU_HOME}/explorer/data
+      - ${ANU_HOME}/explorer/logs:${ANU_HOME}/explorer/logs
+      - ${ANU_HOME}/explorer/tmp:${ANU_HOME}/explorer/tmp
+      - ${ANU_HOME}/nebula-ca/certs:${ANU_HOME}/nebula-ca/certs:ro
+    depends_on:
+      nebula-core:
+        condition: service_started
+
+  nebula-console:
+    image: ${ANU_DEPLOY_CONSOLE_IMAGE}
+    restart: unless-stopped
+    user: "${ANU_CONTAINER_UID}:${ANU_CONTAINER_GID}"
+    network_mode: host
+    environment:
+      ANU_HOME: ${ANU_HOME}
+      ANU_RUNTIME_HOME: ${ANU_RUNTIME_HOME}
+      ANU_INSTANCE_ROOT: ${ANU_HOME}/nebula/console
+      ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/nebula/console
+      ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
+      ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
+      ANU_CERTS_DIR: ${ANU_CERTS_DIR}
+      ANU_TLS_CERT_FILENAME: ${ANU_TLS_CERT_FILENAME}
+      ANU_TLS_KEY_FILENAME: ${ANU_TLS_KEY_FILENAME}
+      ANU_CONSOLE_PORT: ${ANU_CONSOLE_PORT}
+      ANU_CONSOLE_SSL_ENABLED: ${ANU_CONSOLE_SSL_ENABLED}
+      ANU_CONSOLE_API_URL: ${ANU_CONSOLE_API_URL}
+      ANU_CONSOLE_EXPLORER_URL: ${ANU_CONSOLE_EXPLORER_URL}
+      ANU_CONSOLE_PLAYGROUND_URL: ${ANU_CONSOLE_PLAYGROUND_URL}
+      ANU_CONSOLE_EXPLORER_CA_CERTS: ${ANU_CONSOLE_EXPLORER_CA_CERTS}
+      ANU_CONSOLE_APP_TITLE: ${ANU_CONSOLE_APP_TITLE}
+    volumes:
+      - ${ANU_HOME}/nebula/console/certs:${ANU_HOME}/nebula/console/certs:ro
+      - ${ANU_HOME}/nebula-ca/certs/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
+    depends_on:
+      nebula-core:
+        condition: service_started

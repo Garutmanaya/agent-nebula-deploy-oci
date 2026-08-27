@@ -5,30 +5,45 @@ REGISTRY_CONFIG ?= config/registry.json
 IMAGE ?= all
 RELEASE ?= dev
 
+TARGET ?= local
+PROFILE ?= local
+PRODUCT ?= nebula
+COMPONENT ?=
+FORCE ?=
+
 PIPELINE = $(PYTHON) scripts/image_pipeline.py
 COMMON_ARGS = --manifest $(MANIFEST) --registry-config $(REGISTRY_CONFIG) --workspace $(WORKSPACE)
+PYTHON_ENV = PYTHONPATH=$(WORKSPACE)/agent-nebula-utils/src:$$PYTHONPATH
+LIFECYCLE = $(PYTHON_ENV) $(PYTHON) -m deploy.lifecycle
+LIFECYCLE_ARGS = $(PRODUCT) $(PROFILE) --target $(TARGET) --release $(RELEASE) $(if $(COMPONENT),--component $(COMPONENT),)
 
-.PHONY: help builder images registry check arm-build amd-build arm-push amd-push dry-run-arm dry-run-amd init-layout test tf-init tf-fmt tf-validate tf-plan tf-apply tf-destroy
+.PHONY: help builder images registry check arm-build amd-build arm-push amd-push dry-run-arm dry-run-amd init-layout init deploy redeploy stop health logs destroy test tf-init tf-fmt tf-validate tf-plan tf-apply tf-destroy
 
 help:
 	@printf '%s\n' \
-	  'builder       Verify/create the multi-platform buildx builder' \
-	  'images        List configured images' \
-	  'registry      Show registry and release tags (ARCH=arm64|amd64)' \
-	  'check         Validate selected images/repositories (IMAGE=all)' \
-	  'arm-build     Build/load ARM64 images locally' \
-	  'amd-build     Build/load AMD64 images locally' \
-	  'arm-push      Build/push ARM64 images to configured registry' \
-	  'amd-push      Build/push AMD64 images to configured registry' \
-	  'dry-run-arm   Print ARM64 build commands' \
-	  'dry-run-amd   Print AMD64 build commands' \
-	  'init-layout   Initialize corrected durable filesystem layout' \
-	  'test          Run unit tests' \
-	  'tf-init       Initialize OCI Terraform' \
-	  'tf-validate   Validate OCI Terraform' \
-	  'tf-plan       Plan OCI Terraform' \
-	  'tf-apply      Apply OCI Terraform' \
-	  'tf-destroy    Destroy OCI Terraform resources'
+	  'Image commands:' \
+	  '  builder       Verify/create the multi-platform buildx builder' \
+	  '  images        List configured images' \
+	  '  registry      Show registry and release tags (ARCH=arm64|amd64)' \
+	  '  check         Validate selected images/repositories (IMAGE=all)' \
+	  '  arm-build     Build/load ARM64 images locally' \
+	  '  amd-build     Build/load AMD64 images locally' \
+	  '  arm-push      Build/push ARM64 images to configured registry' \
+	  '  amd-push      Build/push AMD64 images to configured registry' \
+	  '' \
+	  'Application commands:' \
+	  '  init          Initialize durable product state and environment' \
+	  '  deploy        Start selected product/component' \
+	  '  redeploy      Recreate selected product/component' \
+	  '  stop          Stop selected product/component' \
+	  '  health        Run product/component health checks' \
+	  '  logs          Show product/component logs' \
+	  '  destroy       Remove selected application state (not OCI infrastructure)' \
+	  '' \
+	  'Selectors: TARGET=local|oci PROFILE=local|cloudflare PRODUCT=nebula|oauth|policy|playground' \
+	  '           COMPONENT=<component> RELEASE=<version> FORCE=config|pki|database|all' \
+	  '' \
+	  'Terraform commands: tf-init tf-validate tf-plan tf-apply tf-destroy'
 
 builder:
 	./scripts/check-builder.sh
@@ -61,10 +76,31 @@ dry-run-amd:
 	$(PIPELINE) build $(IMAGE) $(COMMON_ARGS) --platform linux/amd64 --arch amd64 --release $(RELEASE) --dry-run
 
 init-layout:
-	PYTHONPATH=$(WORKSPACE)/agent-nebula-utils/src:$$PYTHONPATH $(PYTHON) -m deployment.cli
+	$(PYTHON_ENV) $(PYTHON) -m deployment.cli
+
+init:
+	$(LIFECYCLE) init $(LIFECYCLE_ARGS) $(if $(FORCE),--force $(FORCE),)
+
+deploy:
+	$(LIFECYCLE) deploy $(LIFECYCLE_ARGS)
+
+redeploy:
+	$(LIFECYCLE) redeploy $(LIFECYCLE_ARGS)
+
+stop:
+	$(LIFECYCLE) stop $(LIFECYCLE_ARGS)
+
+health:
+	$(LIFECYCLE) health $(LIFECYCLE_ARGS)
+
+logs:
+	$(LIFECYCLE) logs $(LIFECYCLE_ARGS)
+
+destroy:
+	$(LIFECYCLE) destroy $(LIFECYCLE_ARGS)
 
 test:
-	$(PYTHON) -m unittest discover -s tests -v
+	$(PYTHON_ENV) $(PYTHON) -m unittest discover -s tests -v
 
 TF_DIR ?= terraform/oci
 

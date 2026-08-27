@@ -1,0 +1,129 @@
+services:
+  playground-container:
+    image: agent-nebula/nebula-playground:dev
+    restart: unless-stopped
+    init: true
+    user: "${ANU_CONTAINER_UID}:${ANU_CONTAINER_GID}"
+    network_mode: host
+    environment:
+      ANU_HOME: ${ANU_HOME}
+      ANU_RUNTIME_HOME: ${ANU_RUNTIME_HOME}
+      ANU_INSTANCE_ROOT: ${ANU_HOME}/playground/container
+      ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/playground/container
+      ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
+      ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
+      ANU_PLAYGROUND_NEBULA_URL: ${ANU_PLAYGROUND_NEBULA_URL}
+      ANU_OAUTH_PUBLIC_URL: ${ANU_OAUTH_PUBLIC_URL}
+      ANU_PLAYGROUND_PUBLIC_URL: ${ANU_PLAYGROUND_PUBLIC_URL}
+      ANU_PLAYGROUND_HOST: ${ANU_PLAYGROUND_HOST}
+      ANU_PLAYGROUND_PORT: ${ANU_PLAYGROUND_PORT}
+      ANU_PLAYGROUND_INGRESS_PORT: ${ANU_PLAYGROUND_INGRESS_PORT}
+      ANU_PLAYGROUND_AGENT_FIRST_PORT: ${ANU_PLAYGROUND_AGENT_FIRST_PORT}
+      ANU_PLAYGROUND_AGENT_LAST_PORT: ${ANU_PLAYGROUND_AGENT_LAST_PORT}
+      ANU_PLAYGROUND_READINESS_TIMEOUT_SECONDS: ${ANU_PLAYGROUND_READINESS_TIMEOUT_SECONDS}
+      ANU_PLAYGROUND_EXPERIMENT_TTL_SECONDS: ${ANU_PLAYGROUND_EXPERIMENT_TTL_SECONDS}
+      ANU_PLAYGROUND_PROCESS_CPU_SECONDS: ${ANU_PLAYGROUND_PROCESS_CPU_SECONDS}
+      ANU_PLAYGROUND_PROCESS_MEMORY_BYTES: ${ANU_PLAYGROUND_PROCESS_MEMORY_BYTES}
+      ANU_PLAYGROUND_PROCESS_MAXIMUM_OPEN_FILES: ${ANU_PLAYGROUND_PROCESS_MAXIMUM_OPEN_FILES}
+      ANU_PLAYGROUND_TERMINATION_GRACE_SECONDS: ${ANU_PLAYGROUND_TERMINATION_GRACE_SECONDS}
+      ANU_PLAYGROUND_MAXIMUM_PACKAGE_BYTES: ${ANU_PLAYGROUND_MAXIMUM_PACKAGE_BYTES}
+      ANU_PLAYGROUND_MAXIMUM_EXTRACTED_BYTES: ${ANU_PLAYGROUND_MAXIMUM_EXTRACTED_BYTES}
+      ANU_PLAYGROUND_MAXIMUM_PACKAGE_FILES: ${ANU_PLAYGROUND_MAXIMUM_PACKAGE_FILES}
+      ANU_ONBOARDING_API_KEY_FILENAME: ${ANU_ONBOARDING_API_KEY_FILENAME}
+    volumes:
+      # Mount the deployment-owned durable instance root exactly as the standalone
+      # Playground container test does. The application creates/manages config,
+      # data, logs, tmp, and experiment state below ANU_INSTANCE_ROOT.
+      - ${ANU_HOME}/playground/container:${ANU_HOME}/playground/container:rw
+      # Security material remains read-only even though the parent durable root is
+      # writable for application-owned state. Child mounts override the parent mount.
+      - ${ANU_HOME}/playground/container/secrets:${ANU_HOME}/playground/container/secrets:ro
+      - ${ANU_HOME}/playground/container/certs:${ANU_HOME}/playground/container/certs:ro
+      - ${ANU_HOME}/nebula-ca/certs/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import ssl,urllib.request; urllib.request.urlopen('https://127.0.0.1:${ANU_PLAYGROUND_INGRESS_PORT}/health/live',context=ssl._create_unverified_context(),timeout=3).read()"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  playground-backend:
+    image: agent-nebula/nebula-playground-backend:dev
+    restart: unless-stopped
+    init: true
+    user: "${ANU_CONTAINER_UID}:${ANU_CONTAINER_GID}"
+    network_mode: host
+    environment:
+      ANU_HOME: ${ANU_HOME}
+      ANU_RUNTIME_HOME: ${ANU_RUNTIME_HOME}
+      ANU_INSTANCE_ROOT: ${ANU_HOME}/playground/backend
+      ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/playground/backend
+      ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
+      ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
+      ANU_PLAYGROUND_PUBLIC_URL: ${ANU_PLAYGROUND_PUBLIC_URL}
+      ANU_PLAYGROUND_BACKEND_PUBLIC_URL: ${ANU_PLAYGROUND_BACKEND_PUBLIC_URL}
+      ANU_PLAYGROUND_BACKEND_HOST: ${ANU_PLAYGROUND_BACKEND_HOST}
+      ANU_PLAYGROUND_BACKEND_PORT: ${ANU_PLAYGROUND_BACKEND_PORT}
+      ANU_PLAYGROUND_BACKEND_SESSION_TTL_SECONDS: ${ANU_PLAYGROUND_BACKEND_SESSION_TTL_SECONDS}
+    volumes:
+      # Backend follows the same durable-root contract as its standalone test:
+      # /opt is host-owned durable state; /run remains container-owned runtime state.
+      - ${ANU_HOME}/playground/backend:${ANU_HOME}/playground/backend:rw
+      - ${ANU_HOME}/playground/backend/certs:${ANU_HOME}/playground/backend/certs:ro
+      - ${ANU_HOME}/playground/backend/secrets:${ANU_HOME}/playground/backend/secrets:ro
+      - ${ANU_HOME}/nebula-ca/certs/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
+    depends_on:
+      playground-container:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${ANU_PLAYGROUND_BACKEND_PORT}/health/live',timeout=3).read()"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  playground-ui:
+    image: agent-nebula/nebula-playground-ui:dev
+    restart: unless-stopped
+    init: true
+    user: "${ANU_CONTAINER_UID}:${ANU_CONTAINER_GID}"
+    network_mode: host
+    environment:
+      ANU_HOME: ${ANU_HOME}
+      ANU_RUNTIME_HOME: ${ANU_RUNTIME_HOME}
+      ANU_INSTANCE_ROOT: ${ANU_HOME}/playground/ui
+      ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/playground/ui
+      ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
+      ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
+      ANU_CERTS_DIR: ${ANU_CERTS_DIR}
+      ANU_TLS_CERT_FILENAME: ${ANU_TLS_CERT_FILENAME}
+      ANU_TLS_KEY_FILENAME: ${ANU_TLS_KEY_FILENAME}
+      ANU_PLAYGROUND_UI_PUBLIC_URL: ${ANU_PLAYGROUND_UI_PUBLIC_URL}
+      ANU_PLAYGROUND_UI_BACKEND_URL: ${ANU_PLAYGROUND_UI_BACKEND_URL}
+      ANU_PLAYGROUND_UI_EXPLORER_URL: ${ANU_PLAYGROUND_UI_EXPLORER_URL}
+      ANU_PLAYGROUND_UI_PORT: ${ANU_PLAYGROUND_UI_PORT}
+      ANU_PLAYGROUND_UI_SSL_ENABLED: ${ANU_PLAYGROUND_UI_SSL_ENABLED}
+    volumes:
+      - ${ANU_HOME}/playground/ui/certs:${ANU_HOME}/playground/ui/certs:ro
+      - ${ANU_HOME}/nebula-ca/certs/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
+    depends_on:
+      playground-backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('https').get({hostname:'127.0.0.1',port:Number(process.env.ANU_PLAYGROUND_UI_PORT),path:'/health/live',rejectUnauthorized:false},r=>process.exit(r.statusCode<400?0:1)).on('error',()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s

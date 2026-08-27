@@ -1,8 +1,10 @@
-# Agent Nebula OCI Deployment
+# Agent Nebula Local + OCI Deployment
 
-Build and publish Agent Nebula ARM64/AMD64 container images and provision OCI infrastructure.
+This repository builds Agent Nebula images and owns the new local/OCI host deployment lifecycle.
+Application repositories continue to own their Dockerfiles. The existing `agent-nebula-deploy`
+repository remains unchanged and is used only as the proven behavior reference during migration.
 
-All Agent Nebula repositories are expected as siblings of this repository.
+All Agent Nebula repositories are expected as siblings:
 
 ```text
 workspace/
@@ -22,41 +24,75 @@ workspace/
 
 ## Filesystem contract
 
-Local and OCI deployments use the same component ownership model. Durable application data stays
-on the host filesystem; only container runtime material belongs under `/run/agent-nebula`.
+Durable state lives below `/opt/agent-nebula`; application runtime material lives only below
+`/run/agent-nebula` inside containers.
 
 ```text
 /opt/agent-nebula/
 ├── nebula/
-│   ├── core/{config,secrets,certs,data,logs,tmp}
-│   └── console/{config,secrets,certs,data,logs,tmp}
-├── database/{config,secrets,certs,data,logs,tmp}
-├── explorer/{config,secrets,certs,data,logs,tmp}
-├── oauth/{config,secrets,certs,data,logs,tmp}
-├── policy/{config,secrets,certs,data,logs,tmp}
+│   ├── core/
+│   └── console/
+├── database/
+├── explorer/
+├── oauth/
+├── policy/
 ├── playground/
-│   ├── container/{config,secrets,certs,data,logs,tmp}
-│   ├── backend/{config,secrets,certs,data,logs,tmp}
-│   └── ui/{config,secrets,certs,data,logs,tmp}
+│   ├── container/
+│   ├── backend/
+│   └── ui/
 └── nebula-ca/
 ```
 
-Core and OAuth own independent database-password copies beneath their own `secrets/database`
-directories. Neither service reads another component's durable secret path. Container runtime
-roots mirror the same component hierarchy beneath `/run/agent-nebula`; applications will consume
-runtime secrets there in the next migration step.
+Database credentials are component-owned:
 
-Initialize only the durable host layout with the shared Utils filesystem initializer:
-
-```bash
-make init-layout
+```text
+/opt/agent-nebula/database/secrets/service-password
+/opt/agent-nebula/nebula/core/secrets/database/service-password
+/opt/agent-nebula/oauth/secrets/database/service-password
 ```
 
-`make init-layout` does not create host-side `/run/agent-nebula` application state.
+`database` remains the canonical credential owner. Init synchronizes consumer-owned copies without
+making Core and OAuth read another component's filesystem.
 
-## Configure registry
+## Build images
 
-Edit `config/registry.json`:
+Verify repositories and builder:
+
+```bash
+make builder
+make images
+make check IMAGE=all
+```
+
+Build all local AMD64 images:
+
+```bash
+make amd-build IMAGE=all RELEASE=0.5.0
+```
+
+Build all OCI ARM64 images:
+
+```bash
+make arm-build IMAGE=all RELEASE=0.5.0
+```
+
+Push all OCI ARM64 images to the configured GHCR repository:
+
+```bash
+make arm-push IMAGE=all RELEASE=0.5.0
+```
+
+Push AMD64 images when required:
+
+```bash
+make amd-push IMAGE=all RELEASE=0.5.0
+```
+
+Local tags use `<release>-amd64`; OCI tags use `<release>-arm64`.
+
+## Configure GHCR
+
+Edit `config/registry.json` once:
 
 ```json
 {
@@ -69,104 +105,95 @@ Edit `config/registry.json`:
 }
 ```
 
-Remote image names are generated as:
+OCI runtime images resolve to:
 
 ```text
-ghcr.io/<github-user-or-org>/agent-nebula/<image>:<tag>
+ghcr.io/<namespace>/agent-nebula/<image>:<release>-arm64
 ```
 
-Example:
+## Initialize application state
+
+Initialize products in dependency order. The same commands are used for local and OCI; only
+`TARGET` changes.
+
+Local laptop:
+
+```bash
+make init TARGET=local PROFILE=local PRODUCT=policy RELEASE=0.5.0
+make init TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
+make init TARGET=local PROFILE=local PRODUCT=oauth RELEASE=0.5.0
+make init TARGET=local PROFILE=local PRODUCT=playground RELEASE=0.5.0
+```
+
+OCI host:
+
+```bash
+make init TARGET=oci PROFILE=local PRODUCT=policy RELEASE=0.5.0
+make init TARGET=oci PROFILE=local PRODUCT=nebula RELEASE=0.5.0
+make init TARGET=oci PROFILE=local PRODUCT=oauth RELEASE=0.5.0
+make init TARGET=oci PROFILE=local PRODUCT=playground RELEASE=0.5.0
+```
+
+`PROFILE=cloudflare` remains supported and will be wired to the independent Cloudflare tunnel
+initialization in Step 6.
+
+Force initialization preserves the existing category semantics:
+
+```bash
+make init TARGET=local PROFILE=local PRODUCT=nebula FORCE=pki RELEASE=0.5.0
+make init TARGET=oci PROFILE=local PRODUCT=oauth FORCE=all RELEASE=0.5.0
+```
+
+Supported force values are `config`, `pki`, `database`, and `all`.
+
+## Deploy platform
+
+The Nebula stack preserves the proven dependency order:
 
 ```text
-ghcr.io/<github-user-or-org>/agent-nebula/nebula-core:0.5.0-arm64
+Policy -> Database/Core/Migrations -> OAuth -> Console -> Explorer when onboarding key exists
 ```
 
-Login to GHCR before pushing:
+Local:
 
 ```bash
-echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+make deploy TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
+make health TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
 ```
 
-## Builder
+OCI:
 
 ```bash
-make builder
-make images
-make check IMAGE=all
+make deploy TARGET=oci PROFILE=local PRODUCT=nebula RELEASE=0.5.0
+make health TARGET=oci PROFILE=local PRODUCT=nebula RELEASE=0.5.0
 ```
 
-## ARM64 builds
+For OCI, Compose pulls the configured GHCR ARM64 release images automatically. Local deployment
+uses the locally built AMD64 release images.
 
-Build one image:
+## Explorer and Playground
+
+Explorer remains behind the existing operator-created onboarding API-key boundary. After platform
+bootstrap and API-key installation:
 
 ```bash
-make arm-build IMAGE=policy RELEASE=0.5.0
+make deploy TARGET=local PROFILE=local PRODUCT=nebula COMPONENT=explorer RELEASE=0.5.0
+make deploy TARGET=local PROFILE=local PRODUCT=playground RELEASE=0.5.0
 ```
 
-Build all configured images:
+Use `TARGET=oci` for the OCI host.
+
+## Lifecycle commands
 
 ```bash
-make arm-build IMAGE=all RELEASE=0.5.0
+make deploy   TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
+make redeploy TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
+make stop     TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
+make health   TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
+make logs     TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
 ```
 
-Push one image:
-
-```bash
-make arm-push IMAGE=policy RELEASE=0.5.0
-```
-
-Push all images:
-
-```bash
-make arm-push IMAGE=all RELEASE=0.5.0
-```
-
-Tags:
-
-```text
-<release>-arm64
-latest-arm64
-```
-
-Local example: `agent-nebula/nebula-core:0.5.0-arm64`.
-
-Remote example: `ghcr.io/<github-user-or-org>/agent-nebula/nebula-core:0.5.0-arm64`.
-
-## AMD64 builds
-
-```bash
-make amd-build IMAGE=all RELEASE=0.5.0
-make amd-push  IMAGE=all RELEASE=0.5.0
-```
-
-Tags:
-
-```text
-<release>-amd64
-latest-amd64
-```
-
-## Configured images
-
-```text
-policy
-core
-console
-explorer
-oauth
-playground-container
-playground-backend
-playground-ui
-```
-
-Use `IMAGE=<name>` for one image or `IMAGE=all` for every enabled image.
-
-## Dry run
-
-```bash
-make dry-run-arm IMAGE=all RELEASE=0.5.0
-make dry-run-amd IMAGE=all RELEASE=0.5.0
-```
+Use `COMPONENT=<name>` for component-scoped operations.
 
 ## Tests
 
@@ -174,22 +201,15 @@ make dry-run-amd IMAGE=all RELEASE=0.5.0
 make test
 ```
 
-## OCI Terraform
+## Terraform
 
-Terraform files are under `terraform/oci`.
+The current OCI Terraform remains under `terraform/oci`. It is not yet the final three-stage
+Terraform layout. Terraform state bootstrap, application deployment automation, OCI Vault secret
+persistence, and Cloudflare tunnel initialization are later implementation steps.
 
 ```bash
-cp terraform/oci/terraform.tfvars.example terraform/oci/terraform.tfvars
 make tf-init
 make tf-validate
 make tf-plan
 make tf-apply
 ```
-
-Destroy Terraform-managed OCI resources:
-
-```bash
-make tf-destroy
-```
-
-For the first OCI deployment, validate the manual deployment before recreating the environment with Terraform.

@@ -1,0 +1,46 @@
+services:
+  nebula-oauth:
+    image: ${ANU_DEPLOY_OAUTH_IMAGE}
+    restart: unless-stopped
+    init: true
+    user: "${ANU_CONTAINER_UID}:${ANU_CONTAINER_GID}"
+    network_mode: host
+    environment:
+      ANU_HOME: ${ANU_HOME}
+      ANU_RUNTIME_HOME: ${ANU_RUNTIME_HOME}
+      ANU_INSTANCE_ROOT: ${ANU_HOME}/${ANU_OAUTH_INSTANCE}
+      ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/${ANU_OAUTH_INSTANCE}
+      ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
+      ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
+      ANU_NEBULA_URL: ${ANU_NEBULA_URL}
+      ANU_POLICY_SERVICE_URL: ${ANU_POLICY_SERVICE_URL}
+      ANU_OAUTH_INSTANCE: ${ANU_OAUTH_INSTANCE}
+      ANU_OAUTH_SERVICE_URL: ${ANU_OAUTH_SERVICE_URL}
+      ANU_OAUTH_PUBLIC_URL: ${ANU_OAUTH_PUBLIC_URL}
+      ANU_OAUTH_ISSUER: ${ANU_OAUTH_ISSUER}
+      ANU_OAUTH_HOST: ${ANU_OAUTH_HOST}
+      ANU_OAUTH_PORT: ${ANU_OAUTH_PORT}
+      ANU_OAUTH_LOG_LEVEL: ${ANU_OAUTH_LOG_LEVEL}
+      ANU_OAUTH_TLS_ENABLED: ${ANU_OAUTH_TLS_ENABLED}
+      ANU_OAUTH_ACCESS_TOKEN_TTL_SECONDS: ${ANU_OAUTH_ACCESS_TOKEN_TTL_SECONDS}
+      ANU_OAUTH_SIGNING_KEY_ID: ${ANU_OAUTH_SIGNING_KEY_ID}
+      ANU_OAUTH_DATABASE_HOST: ${ANU_OAUTH_DATABASE_HOST}
+      ANU_OAUTH_DATABASE_PORT: ${ANU_OAUTH_DATABASE_PORT}
+      ANU_OAUTH_DATABASE_NAME: ${ANU_OAUTH_DATABASE_NAME}
+      ANU_OAUTH_DATABASE_USER: ${ANU_OAUTH_DATABASE_USER}
+      ANU_OAUTH_DATABASE_SSL_MODE: ${ANU_OAUTH_DATABASE_SSL_MODE}
+    volumes:
+      - ${ANU_HOME}/${ANU_OAUTH_INSTANCE}/secrets:${ANU_HOME}/${ANU_OAUTH_INSTANCE}/secrets:ro
+      - ${ANU_HOME}/${ANU_OAUTH_INSTANCE}/certs:${ANU_HOME}/${ANU_OAUTH_INSTANCE}/certs:ro
+      - ${ANU_HOME}/${ANU_OAUTH_INSTANCE}/data:${ANU_HOME}/${ANU_OAUTH_INSTANCE}/data:rw
+      - ${ANU_HOME}/nebula-ca/certs:${ANU_HOME}/nebula-ca/certs:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import ssl,urllib.request; urllib.request.urlopen('https://127.0.0.1:${ANU_OAUTH_PORT}/health/ready',context=ssl.create_default_context(cafile='${ANU_RUNTIME_HOME}/${ANU_OAUTH_INSTANCE}/pki/${ANU_TRUST_BUNDLE_FILENAME}'),timeout=3).read()"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
