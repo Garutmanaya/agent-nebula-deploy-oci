@@ -1,264 +1,133 @@
 # Agent Nebula Local + OCI Deployment
 
-This repository builds Agent Nebula images and owns the new local/OCI host deployment lifecycle.
-Application repositories continue to own their Dockerfiles. The existing `agent-nebula-deploy`
-repository remains unchanged and is used only as the proven behavior reference during migration.
+This repository builds Agent Nebula images and owns the LOCAL/OCI deployment lifecycle. Application
+repositories continue to own their Dockerfiles. The existing `agent-nebula-deploy` repository is not
+modified.
 
-All Agent Nebula repositories are expected as siblings:
-
-```text
-workspace/
-├── agent-nebula-deploy-oci/
-├── agent-nebula-core/
-├── agent-nebula-explorer/
-├── agent-nebula-oauth/
-├── agent-nebula-playground/
-├── agent-nebula-policy/
-├── agent-nebula-policy-sdk/
-├── agent-nebula-sdk/
-├── agent-nebula-utils/
-├── agent-nebula-plugins/
-├── agent-nebula-runtime/
-└── agent-nebula-connect/
-```
-
-## Filesystem contract
-
-Durable state lives below `/opt/agent-nebula`; application runtime material lives only below
-`/run/agent-nebula` inside containers.
-
-```text
-/opt/agent-nebula/
-├── nebula/
-│   ├── core/
-│   └── console/
-├── database/
-├── explorer/
-├── oauth/
-├── policy/
-├── playground/
-│   ├── container/
-│   ├── backend/
-│   └── ui/
-└── nebula-ca/
-```
-
-Database credentials are component-owned:
-
-```text
-/opt/agent-nebula/database/secrets/service-password
-/opt/agent-nebula/nebula/core/secrets/database/service-password
-/opt/agent-nebula/oauth/secrets/database/service-password
-```
-
-`database` remains the canonical credential owner. Init synchronizes consumer-owned copies without
-making Core and OAuth read another component's filesystem.
-
-## Build images
-
-Verify repositories and builder:
+## Images
 
 ```bash
 make builder
-make images
 make check IMAGE=all
-```
-
-Build all local AMD64 images:
-
-```bash
 make amd-build IMAGE=all RELEASE=0.5.0
-```
-
-Build all OCI ARM64 images:
-
-```bash
 make arm-build IMAGE=all RELEASE=0.5.0
-```
-
-Push all OCI ARM64 images to the configured GHCR repository:
-
-```bash
 make arm-push IMAGE=all RELEASE=0.5.0
 ```
 
-Push AMD64 images when required:
+Registry destination is configured once in `config/registry.json`.
 
-```bash
-make amd-push IMAGE=all RELEASE=0.5.0
-```
-
-Local tags use `<release>-amd64`; OCI tags use `<release>-arm64`.
-
-## Configure GHCR
-
-Edit `config/registry.json` once:
-
-```json
-{
-  "registry": {
-    "provider": "ghcr",
-    "host": "ghcr.io",
-    "namespace": "YOUR_GITHUB_USER_OR_ORG",
-    "project": "agent-nebula"
-  }
-}
-```
-
-OCI runtime images resolve to:
-
-```text
-ghcr.io/<namespace>/agent-nebula/<image>:<release>-arm64
-```
-
-## Initialize application state
-
-Initialize products in dependency order. The same commands are used for local and OCI; only
-`TARGET` changes.
-
-Local laptop:
+## Direct LOCAL lifecycle
 
 ```bash
 make init TARGET=local PROFILE=local PRODUCT=policy RELEASE=0.5.0
 make init TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
 make init TARGET=local PROFILE=local PRODUCT=oauth RELEASE=0.5.0
-make init TARGET=local PROFILE=local PRODUCT=playground RELEASE=0.5.0
-```
-
-OCI host:
-
-```bash
-make init TARGET=oci PROFILE=local PRODUCT=policy RELEASE=0.5.0
-make init TARGET=oci PROFILE=local PRODUCT=nebula RELEASE=0.5.0
-make init TARGET=oci PROFILE=local PRODUCT=oauth RELEASE=0.5.0
-make init TARGET=oci PROFILE=local PRODUCT=playground RELEASE=0.5.0
-```
-
-`PROFILE=cloudflare` remains supported and will be wired to the independent Cloudflare tunnel
-initialization in Step 6.
-
-Force initialization preserves the existing category semantics:
-
-```bash
-make init TARGET=local PROFILE=local PRODUCT=nebula FORCE=pki RELEASE=0.5.0
-make init TARGET=oci PROFILE=local PRODUCT=oauth FORCE=all RELEASE=0.5.0
-```
-
-Supported force values are `config`, `pki`, `database`, and `all`.
-
-## Deploy platform
-
-The Nebula stack preserves the proven dependency order:
-
-```text
-Policy -> Database/Core/Migrations -> OAuth -> Console -> Explorer when onboarding key exists
-```
-
-Local:
-
-```bash
 make deploy TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
 make health TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
 ```
 
-OCI:
+## OCI security contract
 
-```bash
-make deploy TARGET=oci PROFILE=local PRODUCT=nebula RELEASE=0.5.0
-make health TARGET=oci PROFILE=local PRODUCT=nebula RELEASE=0.5.0
-```
+OCI Vault is the authoritative durable security store. `/opt/agent-nebula/.../secrets` contains only
+AES-256-GCM encrypted cache bytes. Container/runtime preparation decrypts into `/run/agent-nebula`.
+LOCAL keeps plaintext durable files and copies them to the same `/run` runtime paths.
 
-For OCI, Compose pulls the configured GHCR ARM64 release images automatically. Local deployment
-uses the locally built AMD64 release images.
+Explorer/Playground/PostgreSQL application data remains on the durable local filesystem; it is not
+stored in Vault.
 
-## Explorer and Playground
+## Terraform Step 5
 
-Explorer remains behind the existing operator-created onboarding API-key boundary. After platform
-bootstrap and API-key installation:
-
-```bash
-make deploy TARGET=local PROFILE=local PRODUCT=nebula COMPONENT=explorer RELEASE=0.5.0
-make deploy TARGET=local PROFILE=local PRODUCT=playground RELEASE=0.5.0
-```
-
-Use `TARGET=oci` for the OCI host.
-
-## Lifecycle commands
-
-```bash
-make deploy   TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
-make redeploy TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
-make stop     TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
-make health   TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
-make logs     TARGET=local PROFILE=local PRODUCT=nebula RELEASE=0.5.0
-```
-
-Use `COMPONENT=<name>` for component-scoped operations.
-
-## Tests
-
-```bash
-make test
-```
-
-## Terraform
-
-The current OCI Terraform remains under `terraform/oci`. It is not yet the final three-stage
-Terraform layout. Terraform state bootstrap, application deployment automation, OCI Vault secret
-persistence, and Cloudflare tunnel initialization are later implementation steps.
-
-```bash
-make tf-init
-make tf-validate
-make tf-plan
-make tf-apply
-```
-
-## Security persistence
-
-LOCAL keeps the existing durable plaintext files under `/opt/agent-nebula` and container entrypoints
-copy them to `/run/agent-nebula`.
-
-OCI uses OCI Vault as the authoritative security store. During `make init TARGET=oci`, existing
-bootstrap logic runs unchanged, then certs/secrets are uploaded to Vault and the same durable paths
-are replaced with AES-256-GCM encrypted cache bytes. Containers receive:
+Terraform is split into three independent roots:
 
 ```text
-ANU_SECRET_ENCRYPTION=masker-key
-ANU_MASKER_KEY_FILE=/run/agent-nebula/masker-key
+terraform/
+├── bootstrap/       AWS S3 Terraform-state bucket
+├── infrastructure/  OCI VCN/VM/Vault/key/Dynamic Group/IAM
+└── application/     Existing Agent Nebula lifecycle over SSH
 ```
 
-and decrypt durable security files only into their container-local `/run/agent-nebula` runtime.
-The stock PostgreSQL container is the only exception: Deploy materializes its required password/TLS
-files into host `/run/agent-nebula/database` before Compose starts.
-
-OCI initialization requires these environment values on the VM:
+### 1. Bootstrap Terraform state
 
 ```bash
-export ANU_OCI_COMPARTMENT_OCID='ocid1.compartment...'
-export ANU_OCI_VAULT_OCID='ocid1.vault...'
-export ANU_OCI_VAULT_KEY_OCID='ocid1.key...'
-export ANU_OCI_AUTH_MODE='instance_principal'
+cp terraform/bootstrap/terraform.tfvars.example terraform/bootstrap/terraform.tfvars
+make tf-bootstrap-plan
+make tf-bootstrap-apply
+
+export TF_STATE_BUCKET="$(terraform -chdir=terraform/bootstrap output -raw state_bucket_name)"
+export TF_STATE_REGION="$(terraform -chdir=terraform/bootstrap output -raw state_bucket_region)"
 ```
 
-Platform bootstrap remains unchanged:
+### 2. Create OCI infrastructure
 
 ```bash
-make bootstrap TARGET=oci PROFILE=cloudflare PRODUCT=nebula
+cp terraform/infrastructure/terraform.tfvars.example terraform/infrastructure/terraform.tfvars
+make tf-infra-plan
+make tf-infra-apply
 ```
 
-Create Explorer and Playground Provider API keys through Console, then import each value without
-placing it in shell history:
+The infrastructure root creates the 2 OCPU / 12 GB A1 VM by default, networking, standard OCI Vault,
+software-protected Vault key, and an Instance Principal with Vault access. Docker, `uv`, Python 3.12
+support, and OCI CLI are bootstrapped through cloud-init.
+
+### 3. Deploy platform phase
 
 ```bash
-make secret-import TARGET=oci COMPONENT=explorer
-make secret-import TARGET=oci COMPONENT=playground
+cp terraform/application/terraform.tfvars.example terraform/application/terraform.tfvars
+export GHCR_USER='<github-user-or-org>'
+export GHCR_TOKEN='<read-packages-token>'
+
+make tf-app-plan  PHASE=platform RELEASE=0.5.0 PROFILE=local
+make tf-app-apply PHASE=platform RELEASE=0.5.0 PROFILE=local
 ```
 
-For local development, the same commands write the API keys to the existing plaintext durable
-secret paths:
+The platform phase reuses the existing lifecycle and runs:
+
+```text
+Policy init
+-> Nebula init
+-> OAuth init
+-> Policy/Database/Core/OAuth/Console deploy
+-> health
+-> existing interactive platform-bootstrap
+```
+
+`platform-bootstrap` is intentionally unchanged and prompts for the existing platform account
+passwords. Provider API keys are still created manually through Console.
+
+The GHCR token is never a Terraform variable. It is piped through SSH to `docker login`, whose
+`DOCKER_CONFIG` is placed under `/run/agent-nebula`, then removed after the deployment attempt.
+
+### 4. Import API keys
+
+After platform bootstrap, create Provider API keys in Console. On the OCI VM run:
 
 ```bash
-make secret-import TARGET=local COMPONENT=explorer
-make secret-import TARGET=local COMPONENT=playground
+cd /opt/agent-nebula/deploy
+set -a; . config/oci-runtime.env; set +a
+
+make PYTHON=/opt/agent-nebula/deploy-venv/bin/python \
+  WORKSPACE=/opt/agent-nebula/deploy-deps \
+  secret-import TARGET=oci COMPONENT=explorer
+
+make PYTHON=/opt/agent-nebula/deploy-venv/bin/python \
+  WORKSPACE=/opt/agent-nebula/deploy-deps \
+  secret-import TARGET=oci COMPONENT=playground
 ```
+
+The raw keys go to OCI Vault and only encrypted cache files remain under `/opt`.
+
+### 5. Deploy Explorer and Playground
+
+```bash
+export GHCR_TOKEN='<read-packages-token>'
+make tf-app-plan  PHASE=applications RELEASE=0.5.0 PROFILE=local
+make tf-app-apply PHASE=applications RELEASE=0.5.0 PROFILE=local
+```
+
+This initializes/deploys Explorer first, then Playground, with health gates.
+
+## Cloudflare
+
+Cloudflare Tunnel initialization remains an independent deployment concern and is intentionally not
+implemented in Step 5. It will be added as Step 6 by copying/reusing the proven Cloudflare behavior
+from `agent-nebula-deploy`.

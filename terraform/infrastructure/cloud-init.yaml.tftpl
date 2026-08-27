@@ -1,0 +1,51 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - ca-certificates
+  - curl
+  - jq
+  - make
+  - openssl
+  - python3
+  - tar
+  - unzip
+
+write_files:
+  - path: /etc/sysctl.d/99-agent-nebula.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      vm.swappiness=10
+  - path: /etc/tmpfiles.d/agent-nebula.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      d /run/agent-nebula 0755 ubuntu ubuntu -
+
+runcmd:
+%{ if create_swap ~}
+  - [ bash, -lc, "test -f /swapfile || fallocate -l 2G /swapfile" ]
+  - [ chmod, "600", /swapfile ]
+  - [ bash, -lc, "mkswap /swapfile >/dev/null 2>&1 || true" ]
+  - [ bash, -lc, "swapon /swapfile || true" ]
+  - [ bash, -lc, "grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab" ]
+%{ endif ~}
+  - [ sysctl, --system ]
+  - [ systemd-tmpfiles, --create, /etc/tmpfiles.d/agent-nebula.conf ]
+  - [ install, -m, "0755", -d, /etc/apt/keyrings ]
+  - [ bash, -lc, "curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc" ]
+  - [ chmod, a+r, /etc/apt/keyrings/docker.asc ]
+  - [ bash, -lc, '. /etc/os-release; echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${UBUNTU_CODENAME:-$VERSION_CODENAME} stable" > /etc/apt/sources.list.d/docker.list' ]
+  - [ apt-get, update ]
+  - [ apt-get, install, -y, docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin ]
+  - [ systemctl, enable, --now, docker ]
+  - [ usermod, -aG, docker, ubuntu ]
+  - [ bash, -lc, "curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh" ]
+  - [ uv, python, install, "3.12" ]
+  - [ bash, -lc, "UV_TOOL_DIR=/opt/agent-nebula/tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool install --python 3.12 oci-cli" ]
+  - [ mkdir, -p, /opt/agent-nebula, /run/agent-nebula ]
+  - [ chown, -R, "ubuntu:ubuntu", /opt/agent-nebula, /run/agent-nebula ]
+
+final_message: "Agent Nebula OCI infrastructure bootstrap completed after $UPTIME seconds"

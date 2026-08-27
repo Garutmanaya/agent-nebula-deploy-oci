@@ -1,0 +1,2 @@
+aws_region        = "us-east-1"
+state_bucket_name = "REPLACE_WITH_GLOBALLY_UNIQUE_AGENT_NEBULA_TFSTATE_BUCKET"
