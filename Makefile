@@ -8,7 +8,7 @@ RELEASE ?= dev
 PIPELINE = $(PYTHON) scripts/image_pipeline.py
 COMMON_ARGS = --manifest $(MANIFEST) --registry-config $(REGISTRY_CONFIG) --workspace $(WORKSPACE)
 
-.PHONY: help builder images registry check arm-build amd-build arm-push amd-push dry-run-arm dry-run-amd test tf-init tf-fmt tf-validate tf-plan tf-apply tf-destroy
+.PHONY: help builder images registry check arm-build amd-build arm-push amd-push dry-run-arm dry-run-amd init-layout test tf-init tf-fmt tf-validate tf-plan tf-apply tf-destroy
 
 help:
 	@printf '%s\n' \
@@ -22,6 +22,7 @@ help:
 	  'amd-push      Build/push AMD64 images to configured registry' \
 	  'dry-run-arm   Print ARM64 build commands' \
 	  'dry-run-amd   Print AMD64 build commands' \
+	  'init-layout   Initialize corrected durable filesystem layout' \
 	  'test          Run unit tests' \
 	  'tf-init       Initialize OCI Terraform' \
 	  'tf-validate   Validate OCI Terraform' \
@@ -58,6 +59,9 @@ dry-run-arm:
 
 dry-run-amd:
 	$(PIPELINE) build $(IMAGE) $(COMMON_ARGS) --platform linux/amd64 --arch amd64 --release $(RELEASE) --dry-run
+
+init-layout:
+	PYTHONPATH=$(WORKSPACE)/agent-nebula-utils/src:$$PYTHONPATH $(PYTHON) -m deployment.cli
 
 test:
 	$(PYTHON) -m unittest discover -s tests -v

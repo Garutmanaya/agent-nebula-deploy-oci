@@ -20,6 +20,40 @@ workspace/
 └── agent-nebula-connect/
 ```
 
+## Filesystem contract
+
+Local and OCI deployments use the same component ownership model. Durable application data stays
+on the host filesystem; only container runtime material belongs under `/run/agent-nebula`.
+
+```text
+/opt/agent-nebula/
+├── nebula/
+│   ├── core/{config,secrets,certs,data,logs,tmp}
+│   └── console/{config,secrets,certs,data,logs,tmp}
+├── database/{config,secrets,certs,data,logs,tmp}
+├── explorer/{config,secrets,certs,data,logs,tmp}
+├── oauth/{config,secrets,certs,data,logs,tmp}
+├── policy/{config,secrets,certs,data,logs,tmp}
+├── playground/
+│   ├── container/{config,secrets,certs,data,logs,tmp}
+│   ├── backend/{config,secrets,certs,data,logs,tmp}
+│   └── ui/{config,secrets,certs,data,logs,tmp}
+└── nebula-ca/
+```
+
+Core and OAuth own independent database-password copies beneath their own `secrets/database`
+directories. Neither service reads another component's durable secret path. Container runtime
+roots mirror the same component hierarchy beneath `/run/agent-nebula`; applications will consume
+runtime secrets there in the next migration step.
+
+Initialize only the durable host layout with the shared Utils filesystem initializer:
+
+```bash
+make init-layout
+```
+
+`make init-layout` does not create host-side `/run/agent-nebula` application state.
+
 ## Configure registry
 
 Edit `config/registry.json`:
