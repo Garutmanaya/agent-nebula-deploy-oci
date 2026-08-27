@@ -16,8 +16,8 @@ spec.loader.exec_module(module)
 class ImagePipelineTests(unittest.TestCase):
     def test_image_ref(self):
         self.assertEqual(
-            module.image_ref("ghcr.io", "example", "nebula-policy", "v1-arm64"),
-            "ghcr.io/example/nebula-policy:v1-arm64",
+            module.image_ref("ghcr.io", "example", "agent-nebula", "nebula-policy", "v1-arm64"),
+            "ghcr.io/example/agent-nebula/nebula-policy:v1-arm64",
         )
 
     def test_policy_manifest_is_enabled(self):
@@ -45,6 +45,7 @@ class ImagePipelineTests(unittest.TestCase):
             provider="ghcr",
             host="ghcr.io",
             namespace="example",
+            project="agent-nebula",
             tag_templates=("{release}-{arch}", "latest-{arch}"),
         )
         self.assertEqual(module.release_tags(cfg, "0.5.0", "arm64"), ["0.5.0-arm64", "latest-arm64"])
@@ -53,7 +54,12 @@ class ImagePipelineTests(unittest.TestCase):
     def test_registry_config(self):
         payload = {
             "schema_version": 1,
-            "registry": {"provider": "ghcr", "host": "ghcr.io", "namespace": "example"},
+            "registry": {
+                "provider": "ghcr",
+                "host": "ghcr.io",
+                "namespace": "example",
+                "project": "agent-nebula",
+            },
             "release": {"tag_templates": ["{release}-{arch}"]},
         }
         with tempfile.TemporaryDirectory() as tmp:
@@ -62,6 +68,7 @@ class ImagePipelineTests(unittest.TestCase):
             cfg = module.load_registry(path)
         self.assertEqual(cfg.host, "ghcr.io")
         self.assertEqual(cfg.namespace, "example")
+        self.assertEqual(cfg.project, "agent-nebula")
 
     def test_multi_platform_load_is_rejected(self):
         spec_obj = module.ImageSpec(name="x", repository="x", image="x", dockerfile="Dockerfile")

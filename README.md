@@ -29,9 +29,22 @@ Edit `config/registry.json`:
   "registry": {
     "provider": "ghcr",
     "host": "ghcr.io",
-    "namespace": "YOUR_GITHUB_USER_OR_ORG"
+    "namespace": "YOUR_GITHUB_USER_OR_ORG",
+    "project": "agent-nebula"
   }
 }
+```
+
+Remote image names are generated as:
+
+```text
+ghcr.io/<github-user-or-org>/agent-nebula/<image>:<tag>
+```
+
+Example:
+
+```text
+ghcr.io/<github-user-or-org>/agent-nebula/nebula-core:0.5.0-arm64
 ```
 
 Login to GHCR before pushing:
@@ -81,7 +94,9 @@ Tags:
 latest-arm64
 ```
 
-Example: `nebula-core:0.5.0-arm64` and `nebula-core:latest-arm64`.
+Local example: `agent-nebula/nebula-core:0.5.0-arm64`.
+
+Remote example: `ghcr.io/<github-user-or-org>/agent-nebula/nebula-core:0.5.0-arm64`.
 
 ## AMD64 builds
 

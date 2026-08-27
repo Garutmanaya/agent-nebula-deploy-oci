@@ -33,6 +33,7 @@ class RegistryConfig:
     provider: str
     host: str
     namespace: str
+    project: str
     tag_templates: tuple[str, ...]
 
 
@@ -76,12 +77,15 @@ def load_registry(path: Path) -> RegistryConfig:
         provider=registry.get("provider", ""),
         host=registry.get("host", ""),
         namespace=registry.get("namespace", ""),
+        project=registry.get("project", ""),
         tag_templates=tuple(release.get("tag_templates", ["{release}-{arch}"])),
     )
     if not config.host:
         raise ValueError("Registry host is required in registry config")
     if not config.namespace:
         raise ValueError("Registry namespace is required in registry config")
+    if not config.project:
+        raise ValueError("Registry project is required in registry config")
     return config
 
 
@@ -115,10 +119,14 @@ def select(specs: list[ImageSpec], names: list[str]) -> list[ImageSpec]:
     return [spec for spec in enabled if spec.name in wanted]
 
 
-def image_ref(registry: str, namespace: str, image: str, tag: str) -> str:
+def image_ref(
+    registry: str, namespace: str, project: str, image: str, tag: str
+) -> str:
     prefix = registry.rstrip("/")
-    ns = namespace.strip("/")
-    return f"{prefix}/{ns}/{image}:{tag}" if ns else f"{prefix}/{image}:{tag}"
+    path = "/".join(
+        part.strip("/") for part in (namespace, project, image) if part.strip("/")
+    )
+    return f"{prefix}/{path}:{tag}"
 
 
 def release_tags(config: RegistryConfig, release: str, arch: str) -> list[str]:
@@ -172,6 +180,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workspace", default="..", help="Directory containing sibling Agent Nebula repositories")
     parser.add_argument("--registry", default=os.getenv("AN_OCI_REGISTRY"))
     parser.add_argument("--namespace", default=os.getenv("AN_OCI_REGISTRY_NAMESPACE"))
+    parser.add_argument("--project", default=os.getenv("AN_OCI_REGISTRY_PROJECT"))
     parser.add_argument("--release", default=os.getenv("AN_RELEASE", "dev"))
     parser.add_argument("--platform", action="append", dest="platforms")
     parser.add_argument("--arch", choices=("arm64", "amd64"), default="arm64")
@@ -192,6 +201,7 @@ def main() -> int:
     # Explicit CLI/env overrides remain useful for CI, but normal operation is config driven.
     registry_host = args.registry or registry_config.host
     registry_namespace = args.namespace or registry_config.namespace
+    registry_project = args.project or registry_config.project
 
     if args.action == "list":
         for spec in specs:
@@ -203,6 +213,7 @@ def main() -> int:
         print(f"provider:  {registry_config.provider}")
         print(f"registry:  {registry_host}")
         print(f"namespace: {registry_namespace}")
+        print(f"project:   {registry_project}")
         print(f"arch:      {args.arch}")
         print(f"tags:      {', '.join(release_tags(registry_config, args.release, args.arch))}")
         return 0
@@ -233,7 +244,9 @@ def main() -> int:
         repo = resolve_repo(workspace, spec)
         if push:
             targets = [
-                image_ref(registry_host, registry_namespace, spec.image, tag)
+                image_ref(
+                    registry_host, registry_namespace, registry_project, spec.image, tag
+                )
                 for tag in tags
             ]
         else:

@@ -3,8 +3,7 @@
   "registry": {
     "provider": "ghcr",
     "host": "ghcr.io",
-    "namespace": "garutmanaya",
-    "project": "agent-nebula"
+    "namespace": "garutmanaya"
   },
   "release": {
     "tag_templates": [
