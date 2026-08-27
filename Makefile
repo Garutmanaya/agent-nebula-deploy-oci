@@ -17,7 +17,7 @@ PYTHON_ENV = PYTHONPATH=$(WORKSPACE)/agent-nebula-utils/src:$$PYTHONPATH
 LIFECYCLE = $(PYTHON_ENV) $(PYTHON) -m deploy.lifecycle
 LIFECYCLE_ARGS = $(PRODUCT) $(PROFILE) --target $(TARGET) --release $(RELEASE) $(if $(COMPONENT),--component $(COMPONENT),)
 
-.PHONY: help builder images registry check arm-build amd-build arm-push amd-push dry-run-arm dry-run-amd init-layout init deploy redeploy stop health logs destroy test tf-init tf-fmt tf-validate tf-plan tf-apply tf-destroy
+.PHONY: help builder images registry check arm-build amd-build arm-push amd-push dry-run-arm dry-run-amd init-layout init deploy redeploy stop health logs destroy bootstrap secret-import test tf-init tf-fmt tf-validate tf-plan tf-apply tf-destroy
 
 help:
 	@printf '%s\n' \
@@ -39,6 +39,8 @@ help:
 	  '  health        Run product/component health checks' \
 	  '  logs          Show product/component logs' \
 	  '  destroy       Remove selected application state (not OCI infrastructure)' \
+	  '  bootstrap     Run the existing Core-owned platform bootstrap' \
+	  '  secret-import Securely import Explorer/Playground API key' \
 	  '' \
 	  'Selectors: TARGET=local|oci PROFILE=local|cloudflare PRODUCT=nebula|oauth|policy|playground' \
 	  '           COMPONENT=<component> RELEASE=<version> FORCE=config|pki|database|all' \
@@ -98,6 +100,12 @@ logs:
 
 destroy:
 	$(LIFECYCLE) destroy $(LIFECYCLE_ARGS)
+
+bootstrap:
+	$(PYTHON_ENV) $(PYTHON) -m deploy.platform_bootstrap $(TARGET) --profile $(PROFILE) $(if $(filter 1 true yes,$(FORCE)),--force,)
+
+secret-import:
+	$(PYTHON_ENV) $(PYTHON) -m deployment.security.cli --target $(TARGET) --component $(COMPONENT) --name $(or $(SECRET_NAME),onboarding-api-key)
 
 test:
 	$(PYTHON_ENV) $(PYTHON) -m unittest discover -s tests -v

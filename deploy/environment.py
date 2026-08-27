@@ -132,6 +132,12 @@ class DeploymentEnvironmentService:
             InfrastructureEnvironment.RUNTIME_MODE.name: profile,
             DeploymentEnvironment.CONTAINER_UID.name: str(self._deployment.container_uid),
             DeploymentEnvironment.CONTAINER_GID.name: str(self._deployment.container_gid),
+            DeploymentEnvironment.SECRET_ENCRYPTION.name: (
+                "none" if self._target is DeploymentTarget.LOCAL else "masker-key"
+            ),
+            DeploymentEnvironment.MASKER_KEY_FILE.name: str(
+                DeploymentEnvironment.MASKER_KEY_FILE.default
+            ),
             DeploymentEnvironment.IMAGE_SOURCE.name: self._target.image_source,
             DeploymentEnvironment.CORE_IMAGE.name: self._deployment.core_image,
             DeploymentEnvironment.CONSOLE_IMAGE.name: self._deployment.console_image,

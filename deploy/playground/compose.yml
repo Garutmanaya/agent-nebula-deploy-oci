@@ -12,6 +12,8 @@ services:
       ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/playground/container
       ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
       ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
+      ANU_SECRET_ENCRYPTION: ${ANU_SECRET_ENCRYPTION}
+      ANU_MASKER_KEY_FILE: ${ANU_MASKER_KEY_FILE}
       ANU_PLAYGROUND_NEBULA_URL: ${ANU_PLAYGROUND_NEBULA_URL}
       ANU_OAUTH_PUBLIC_URL: ${ANU_OAUTH_PUBLIC_URL}
       ANU_PLAYGROUND_PUBLIC_URL: ${ANU_PLAYGROUND_PUBLIC_URL}
@@ -39,7 +41,8 @@ services:
       # writable for application-owned state. Child mounts override the parent mount.
       - ${ANU_HOME}/playground/container/secrets:${ANU_HOME}/playground/container/secrets:ro
       - ${ANU_HOME}/playground/container/certs:${ANU_HOME}/playground/container/certs:ro
-      - ${ANU_HOME}/nebula-ca/certs/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
+      - ${ANU_RUNTIME_HOME}/nebula-ca/pki/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
+      - ${ANU_MASKER_KEY_FILE}:${ANU_MASKER_KEY_FILE}:ro
     healthcheck:
       test:
         - CMD
@@ -64,6 +67,8 @@ services:
       ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/playground/backend
       ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
       ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
+      ANU_SECRET_ENCRYPTION: ${ANU_SECRET_ENCRYPTION}
+      ANU_MASKER_KEY_FILE: ${ANU_MASKER_KEY_FILE}
       ANU_PLAYGROUND_PUBLIC_URL: ${ANU_PLAYGROUND_PUBLIC_URL}
       ANU_PLAYGROUND_BACKEND_PUBLIC_URL: ${ANU_PLAYGROUND_BACKEND_PUBLIC_URL}
       ANU_PLAYGROUND_BACKEND_HOST: ${ANU_PLAYGROUND_BACKEND_HOST}
@@ -75,7 +80,8 @@ services:
       - ${ANU_HOME}/playground/backend:${ANU_HOME}/playground/backend:rw
       - ${ANU_HOME}/playground/backend/certs:${ANU_HOME}/playground/backend/certs:ro
       - ${ANU_HOME}/playground/backend/secrets:${ANU_HOME}/playground/backend/secrets:ro
-      - ${ANU_HOME}/nebula-ca/certs/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
+      - ${ANU_RUNTIME_HOME}/nebula-ca/pki/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
+      - ${ANU_MASKER_KEY_FILE}:${ANU_MASKER_KEY_FILE}:ro
     depends_on:
       playground-container:
         condition: service_healthy
@@ -111,9 +117,11 @@ services:
       ANU_PLAYGROUND_UI_EXPLORER_URL: ${ANU_PLAYGROUND_UI_EXPLORER_URL}
       ANU_PLAYGROUND_UI_PORT: ${ANU_PLAYGROUND_UI_PORT}
       ANU_PLAYGROUND_UI_SSL_ENABLED: ${ANU_PLAYGROUND_UI_SSL_ENABLED}
+      ANU_PLAYGROUND_UI_TLS_CERTIFICATE_FILE: ${ANU_RUNTIME_HOME}/playground/ui/pki/${ANU_TLS_CERT_FILENAME}
+      ANU_PLAYGROUND_UI_TLS_PRIVATE_KEY_FILE: ${ANU_RUNTIME_HOME}/playground/ui/pki/${ANU_TLS_KEY_FILENAME}
     volumes:
-      - ${ANU_HOME}/playground/ui/certs:${ANU_HOME}/playground/ui/certs:ro
-      - ${ANU_HOME}/nebula-ca/certs/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
+      - ${ANU_RUNTIME_HOME}/playground/ui/pki:${ANU_RUNTIME_HOME}/playground/ui/pki:ro
+      - ${ANU_RUNTIME_HOME}/nebula-ca/pki/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
     depends_on:
       playground-backend:
         condition: service_healthy

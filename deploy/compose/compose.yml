@@ -26,10 +26,10 @@ services:
       # Preserve the proven pre-migration PostgreSQL TLS flow. The stock Postgres image has no
       # Agent Nebula runtime bootstrap, so durable host certificates are mounted into its existing
       # container-local staging path and the wrapper copies them to the PostgreSQL-owned TLS dir.
-      - ${ANU_HOME}/database/certs/server.crt:/run/agent-nebula/database/pki/server.crt:ro
-      - ${ANU_HOME}/database/certs/server.key:/run/agent-nebula/database/pki/server.key:ro
-      - ${ANU_HOME}/nebula-ca/certs/root-ca.crt:/run/agent-nebula/database/pki/root-ca.crt:ro
-      - ${ANU_HOME}/database/secrets/service-password:/run/secrets/database-password:ro
+      - ${ANU_RUNTIME_HOME}/database/pki/server.crt:/run/agent-nebula/database/pki/server.crt:ro
+      - ${ANU_RUNTIME_HOME}/database/pki/server.key:/run/agent-nebula/database/pki/server.key:ro
+      - ${ANU_RUNTIME_HOME}/database/pki/root-ca.crt:/run/agent-nebula/database/pki/root-ca.crt:ro
+      - ${ANU_RUNTIME_HOME}/database/secrets/service-password:/run/secrets/database-password:ro
       - ./postgres-entrypoint-tls.sh:/usr/local/bin/postgres-entrypoint-tls.sh:ro
     healthcheck:
       test:
@@ -54,6 +54,8 @@ services:
       ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/nebula/core
       ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
       ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
+      ANU_SECRET_ENCRYPTION: ${ANU_SECRET_ENCRYPTION}
+      ANU_MASKER_KEY_FILE: ${ANU_MASKER_KEY_FILE}
       ANU_CORE_PUBLIC_UI_URL: ${ANU_CORE_PUBLIC_UI_URL}
       ANU_CORE_PORT: ${ANU_CORE_PORT}
       ANU_CORE_SSL_ENABLED: ${ANU_CORE_SSL_ENABLED}
@@ -75,8 +77,9 @@ services:
       - ${ANU_HOME}/nebula/core/data:${ANU_HOME}/nebula/core/data
       - ${ANU_HOME}/nebula/core/logs:${ANU_HOME}/nebula/core/logs
       - ${ANU_HOME}/nebula/core/tmp:${ANU_HOME}/nebula/core/tmp
-      - ${ANU_HOME}/nebula-ca/certs:${ANU_HOME}/nebula-ca/certs:ro
+      - ${ANU_RUNTIME_HOME}/nebula-ca/pki:${ANU_HOME}/nebula-ca/certs:ro
       - ${ANU_HOME}/nebula-ca/secrets:${ANU_HOME}/nebula-ca/secrets:ro
+      - ${ANU_MASKER_KEY_FILE}:${ANU_MASKER_KEY_FILE}:ro
     command:
       - python
       - scripts/database/migrate.py
@@ -116,6 +119,8 @@ services:
       ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/explorer
       ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
       ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
+      ANU_SECRET_ENCRYPTION: ${ANU_SECRET_ENCRYPTION}
+      ANU_MASKER_KEY_FILE: ${ANU_MASKER_KEY_FILE}
       ANU_EXPLORER_MODE: ${ANU_EXPLORER_MODE}
       ANU_NEBULA_URL: ${ANU_NEBULA_URL}
       ANU_OAUTH_PUBLIC_URL: ${ANU_OAUTH_PUBLIC_URL}
@@ -142,7 +147,8 @@ services:
       - ${ANU_HOME}/explorer/data:${ANU_HOME}/explorer/data
       - ${ANU_HOME}/explorer/logs:${ANU_HOME}/explorer/logs
       - ${ANU_HOME}/explorer/tmp:${ANU_HOME}/explorer/tmp
-      - ${ANU_HOME}/nebula-ca/certs:${ANU_HOME}/nebula-ca/certs:ro
+      - ${ANU_RUNTIME_HOME}/nebula-ca/pki:${ANU_HOME}/nebula-ca/certs:ro
+      - ${ANU_MASKER_KEY_FILE}:${ANU_MASKER_KEY_FILE}:ro
     depends_on:
       nebula-core:
         condition: service_started
@@ -169,9 +175,11 @@ services:
       ANU_CONSOLE_PLAYGROUND_URL: ${ANU_CONSOLE_PLAYGROUND_URL}
       ANU_CONSOLE_EXPLORER_CA_CERTS: ${ANU_CONSOLE_EXPLORER_CA_CERTS}
       ANU_CONSOLE_APP_TITLE: ${ANU_CONSOLE_APP_TITLE}
+      ANU_CONSOLE_TLS_CERTIFICATE_FILE: ${ANU_RUNTIME_HOME}/nebula/console/pki/${ANU_TLS_CERT_FILENAME}
+      ANU_CONSOLE_TLS_PRIVATE_KEY_FILE: ${ANU_RUNTIME_HOME}/nebula/console/pki/${ANU_TLS_KEY_FILENAME}
     volumes:
-      - ${ANU_HOME}/nebula/console/certs:${ANU_HOME}/nebula/console/certs:ro
-      - ${ANU_HOME}/nebula-ca/certs/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
+      - ${ANU_RUNTIME_HOME}/nebula/console/pki:${ANU_RUNTIME_HOME}/nebula/console/pki:ro
+      - ${ANU_RUNTIME_HOME}/nebula-ca/pki/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
     depends_on:
       nebula-core:
         condition: service_started

@@ -213,3 +213,52 @@ make tf-validate
 make tf-plan
 make tf-apply
 ```
+
+## Security persistence
+
+LOCAL keeps the existing durable plaintext files under `/opt/agent-nebula` and container entrypoints
+copy them to `/run/agent-nebula`.
+
+OCI uses OCI Vault as the authoritative security store. During `make init TARGET=oci`, existing
+bootstrap logic runs unchanged, then certs/secrets are uploaded to Vault and the same durable paths
+are replaced with AES-256-GCM encrypted cache bytes. Containers receive:
+
+```text
+ANU_SECRET_ENCRYPTION=masker-key
+ANU_MASKER_KEY_FILE=/run/agent-nebula/masker-key
+```
+
+and decrypt durable security files only into their container-local `/run/agent-nebula` runtime.
+The stock PostgreSQL container is the only exception: Deploy materializes its required password/TLS
+files into host `/run/agent-nebula/database` before Compose starts.
+
+OCI initialization requires these environment values on the VM:
+
+```bash
+export ANU_OCI_COMPARTMENT_OCID='ocid1.compartment...'
+export ANU_OCI_VAULT_OCID='ocid1.vault...'
+export ANU_OCI_VAULT_KEY_OCID='ocid1.key...'
+export ANU_OCI_AUTH_MODE='instance_principal'
+```
+
+Platform bootstrap remains unchanged:
+
+```bash
+make bootstrap TARGET=oci PROFILE=cloudflare PRODUCT=nebula
+```
+
+Create Explorer and Playground Provider API keys through Console, then import each value without
+placing it in shell history:
+
+```bash
+make secret-import TARGET=oci COMPONENT=explorer
+make secret-import TARGET=oci COMPONENT=playground
+```
+
+For local development, the same commands write the API keys to the existing plaintext durable
+secret paths:
+
+```bash
+make secret-import TARGET=local COMPONENT=explorer
+make secret-import TARGET=local COMPONENT=playground
+```

@@ -1,0 +1,46 @@
+"""Construct target-specific security persistence services from deployment configuration.
+
+The factory keeps OCI identifiers and authentication choices outside application lifecycle logic.
+Local deployments deliberately return ``None`` because they retain the existing plaintext durable
+security behavior.
+"""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Mapping
+from pathlib import Path
+
+from deployment.targets import DeploymentTarget
+from deployment.topology import AgentNebulaDeploymentTopology
+
+from .persistence import OciSecurityPersistenceService
+from .vault import OciVaultConfiguration, OciVaultSecretClient
+
+
+def build_security_persistence_service(
+    *,
+    target: DeploymentTarget,
+    topology: AgentNebulaDeploymentTopology,
+    environment: Mapping[str, str] | None = None,
+) -> OciSecurityPersistenceService | None:
+    """Return OCI encrypted persistence for OCI targets and no adapter for local targets."""
+
+    if target is DeploymentTarget.LOCAL:
+        return None
+    values = os.environ if environment is None else environment
+    configuration = OciVaultConfiguration(
+        compartment_ocid=values.get("ANU_OCI_COMPARTMENT_OCID", ""),
+        vault_ocid=values.get("ANU_OCI_VAULT_OCID", ""),
+        key_ocid=values.get("ANU_OCI_VAULT_KEY_OCID", ""),
+        auth_mode=values.get("ANU_OCI_AUTH_MODE", "instance_principal"),
+        secret_prefix=values.get("ANU_OCI_SECRET_PREFIX", "anu"),
+    )
+    masker_key_file = Path(
+        values.get("ANU_MASKER_KEY_FILE", "/run/agent-nebula/masker-key")
+    )
+    return OciSecurityPersistenceService(
+        topology=topology,
+        vault=OciVaultSecretClient(configuration),
+        masker_key_file=masker_key_file,
+    )

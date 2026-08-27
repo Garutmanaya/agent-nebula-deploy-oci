@@ -18,6 +18,8 @@ from pathlib import Path
 
 from deployment.runtime_images import ComposeImageOverrideService
 from deployment.targets import DeploymentTarget
+from deployment.topology import AgentNebulaDeploymentTopology
+from deployment.security import HostRuntimeSecurityService, build_security_persistence_service
 
 from agent_nebula_utils import (
     HEALTH_ENDPOINTS,
@@ -159,6 +161,15 @@ class HostDeploymentService:
         """Refresh config and initialize the selected durable resource scope safely."""
 
         generated = self._environments.generate(product=product, profile=profile)
+        topology = AgentNebulaDeploymentTopology.from_environment(generated.values)
+        security = build_security_persistence_service(
+            target=self._target,
+            topology=topology,
+        )
+        if security is not None:
+            security.prepare_for_initialization()
+        else:
+            self._ensure_local_masker_key_mount(generated.values)
         if product == "nebula":
             applicable = NebulaBootstrapService(generated.values).initialize(
                 force_scope=force_scope,
@@ -181,6 +192,8 @@ class HostDeploymentService:
             )
         else:
             return False
+        if applicable and security is not None:
+            security.finalize_initialization()
         if applicable:
             force_label = force_scope.value if force_scope else "config"
             print(
@@ -189,6 +202,37 @@ class HostDeploymentService:
                 f"environment={generated.path}"
             )
         return applicable
+
+    def _prepare_runtime_security(self, environment: DeploymentEnvironmentFile) -> None:
+        """Prepare masker-key and stock-database runtime material before Compose starts."""
+
+        topology = AgentNebulaDeploymentTopology.from_environment(environment.values)
+        security = build_security_persistence_service(target=self._target, topology=topology)
+        masker_key_file = Path(
+            environment.values.get("ANU_MASKER_KEY_FILE", "/run/agent-nebula/masker-key")
+        )
+        if security is not None:
+            security.prepare_for_deployment()
+        else:
+            self._ensure_local_masker_key_mount(environment.values)
+        HostRuntimeSecurityService(
+            topology=topology,
+            target=self._target,
+            masker_key_file=masker_key_file,
+        ).prepare()
+
+    @staticmethod
+    def _ensure_local_masker_key_mount(environment: dict[str, str]) -> None:
+        """Create an unused private key file so Compose stays identical when encryption is disabled."""
+
+        from agent_nebula_utils import AesGcmFileCipher
+
+        path = Path(environment.get("ANU_MASKER_KEY_FILE", "/run/agent-nebula/masker-key"))
+        if path.is_file():
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(AesGcmFileCipher.encode_key(AesGcmFileCipher.generate_key()))
+        path.chmod(0o600)
 
     def _deploy_nebula_stack(
         self,
@@ -252,6 +296,8 @@ class HostDeploymentService:
         recreate: bool,
     ) -> None:
         """Pull when required, validate prerequisites, and start requested Compose services."""
+
+        self._prepare_runtime_security(environment)
 
         if product == "nebula" and component in {None, "core", "migrate", "console", "explorer"}:
             self._require_policy_ready(environment)
@@ -384,9 +430,9 @@ class HostDeploymentService:
 
         infrastructure = anu_load_settings(environment.values)
         ca_file = (
-            infrastructure.home
+            infrastructure.runtime_home
             / infrastructure.nebula_ca_dir
-            / infrastructure.certs_dir
+            / infrastructure.pki_dir
             / infrastructure.root_ca_filename
         )
         if product == "oauth":
@@ -523,9 +569,9 @@ class HostDeploymentService:
         policy = anu_load_policy_settings(environment.values)
         infrastructure = anu_load_settings(environment.values)
         ca_file = (
-            infrastructure.home
+            infrastructure.runtime_home
             / infrastructure.nebula_ca_dir
-            / infrastructure.certs_dir
+            / infrastructure.pki_dir
             / infrastructure.root_ca_filename
         )
         context = ssl.create_default_context(cafile=str(ca_file))
@@ -548,9 +594,9 @@ class HostDeploymentService:
         infrastructure = anu_load_settings(environment.values)
         core = anu_load_core_settings(environment.values)
         ca_file = (
-            infrastructure.home
+            infrastructure.runtime_home
             / infrastructure.nebula_ca_dir
-            / infrastructure.certs_dir
+            / infrastructure.pki_dir
             / infrastructure.root_ca_filename
         )
         context = ssl.create_default_context(cafile=str(ca_file))
@@ -567,9 +613,9 @@ class HostDeploymentService:
         infrastructure = anu_load_settings(environment.values)
         oauth = anu_load_oauth_settings(environment.values)
         ca_file = (
-            infrastructure.home
+            infrastructure.runtime_home
             / infrastructure.nebula_ca_dir
-            / infrastructure.certs_dir
+            / infrastructure.pki_dir
             / infrastructure.root_ca_filename
         )
         context = ssl.create_default_context(cafile=str(ca_file))
