@@ -313,3 +313,13 @@ sudo rm -rf /run/agent-nebula
 
 Only remove `/opt/agent-nebula` manually when a complete loss of PostgreSQL, Explorer and Playground
 data is intended.
+
+### Buildx ARM64 support
+
+`make builder` uses the dedicated `agent-nebula-builder`. On an AMD64 development host it
+installs the ARM64 `binfmt`/QEMU registration automatically when required and recreates only that
+dedicated Buildx builder so BuildKit detects the additional platform. This requires permission to
+run a privileged Docker helper container.
+
+`make check IMAGE=all` is a metadata/build-context validation command and does not require the
+`agent-nebula-utils` Python package to be installed in the deployment repository environment.
