@@ -21,4 +21,4 @@ class DeploymentTarget(str, Enum):
     def image_source(self) -> str:
         """Return the canonical Utils image-source value for this target."""
 
-        return "local" if self is DeploymentTarget.LOCAL else "registry"
+        return "registry"

@@ -76,3 +76,17 @@ def test_prepare_restores_and_unseals_vault_material_for_existing_bootstrap(tmp_
     service.prepare_for_initialization()
 
     assert destination.read_bytes() == b"explorer-key"
+
+
+def test_finalize_keeps_public_certificate_readable_while_backing_it_up(tmp_path: Path) -> None:
+    """Public certificates remain host-readable for infrastructure while Vault stays authoritative."""
+
+    service, vault = _service(tmp_path)
+    certificate = service.topology.core.certs / "server.crt"
+    certificate.parent.mkdir(parents=True)
+    certificate.write_bytes(b"public-certificate")
+
+    service.finalize_initialization()
+
+    assert certificate.read_bytes() == b"public-certificate"
+    assert b"public-certificate" in vault.values.values()

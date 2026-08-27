@@ -42,7 +42,7 @@ class SecurityPersistenceService(ABC):
 
 @dataclass(slots=True)
 class OciSecurityPersistenceService(SecurityPersistenceService):
-    """Use OCI Vault as source of truth and AES-GCM encrypted files as the VM-local cache."""
+    """Use OCI Vault as source of truth and encrypt only private VM-local security material."""
 
     topology: AgentNebulaDeploymentTopology
     vault: OciVaultSecretClient
@@ -68,7 +68,7 @@ class OciSecurityPersistenceService(SecurityPersistenceService):
                 self._atomic_write(path, cipher.decrypt(payload), mode=self._source_mode(path))
 
     def finalize_initialization(self) -> None:
-        """Upload all current security files to Vault and leave only encrypted cache bytes on disk."""
+        """Upload security files to Vault and encrypt only private material on persistent disk."""
 
         cipher = self._cipher()
         for path in self._security_files():
@@ -79,7 +79,9 @@ class OciSecurityPersistenceService(SecurityPersistenceService):
                 else payload
             )
             self.vault.put(self._vault_name(path), plaintext)
-            self._atomic_write(path, cipher.encrypt(plaintext), mode=self._source_mode(path))
+            mode = self._source_mode(path)
+            cached = cipher.encrypt(plaintext) if mode == 0o600 else plaintext
+            self._atomic_write(path, cached, mode=mode)
 
     def import_secret(self, *, destination: Path, value: bytes) -> None:
         """Store an operator-created API key in Vault and write only encrypted bytes to disk."""
@@ -117,7 +119,9 @@ class OciSecurityPersistenceService(SecurityPersistenceService):
             if value is None:
                 continue
             destination.parent.mkdir(parents=True, exist_ok=True)
-            self._atomic_write(destination, cipher.encrypt(value), mode=self._source_mode(destination))
+            mode = self._source_mode(destination)
+            cached = cipher.encrypt(value) if mode == 0o600 else value
+            self._atomic_write(destination, cached, mode=mode)
 
     def _security_files(self) -> tuple[Path, ...]:
         """Return regular durable secret/certificate files across all managed components and CA."""
@@ -173,7 +177,7 @@ class OciSecurityPersistenceService(SecurityPersistenceService):
 
     @staticmethod
     def _source_mode(path: Path) -> int:
-        """Keep secrets/private keys private while allowing public certificate reads."""
+        """Classify private material for encryption while keeping public trust material readable."""
 
         if "secrets" in path.parts or path.suffix.lower() == ".key":
             return 0o600

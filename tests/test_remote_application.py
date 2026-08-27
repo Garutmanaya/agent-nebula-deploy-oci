@@ -50,7 +50,7 @@ class RemoteApplicationPlanTests(unittest.TestCase):
                 identity_file=identity,
                 repository_root=repository,
                 utils_repository=utils,
-                release="0.5.0",
+                image_tag="latest",
                 profile="local",
                 phase=phase,
                 compartment_ocid="ocid1.compartment.test",
@@ -58,6 +58,18 @@ class RemoteApplicationPlanTests(unittest.TestCase):
                 vault_key_ocid="ocid1.key.test",
             )
         )
+
+
+    def test_prepare_phase_initializes_without_deploying(self) -> None:
+        """Cloudflare preparation phase must create profile material without starting services."""
+
+        commands = self._installer("prepare")._phase_commands()
+        text = "\n".join(command for command, _interactive in commands)
+        self.assertIn("PRODUCT=policy", text)
+        self.assertIn("PRODUCT=nebula", text)
+        self.assertIn("PRODUCT=oauth", text)
+        self.assertNotIn(" deploy ", text)
+        self.assertNotIn(" bootstrap ", text)
 
     def test_platform_phase_preserves_existing_bootstrap_boundary(self) -> None:
         """Platform phase must stop after the existing interactive platform bootstrap."""

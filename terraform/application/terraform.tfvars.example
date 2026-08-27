@@ -1,10 +1,11 @@
 # The S3 state bucket/region are supplied through TF_STATE_BUCKET/TF_STATE_REGION by the Makefile.
 # For direct Terraform use, export TF_VAR_state_bucket and TF_VAR_state_region.
 
-release = "0.5.0"
+image_tag = "latest"
 profile = "local"
 
-# First use platform. After Console API-key creation/import, change to applications.
+# Use prepare first only when Cloudflare must be configured before platform deployment.
+# After Console API-key creation/import, change platform to applications.
 deployment_phase = "platform"
 
 ssh_private_key_path  = "~/.ssh/agent_nebula_oci"

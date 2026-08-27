@@ -1,4 +1,4 @@
-"""Regression tests for local/OCI runtime image selection and Compose overrides."""
+"""Regression tests for GHCR runtime image selection and Compose overrides."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from deployment.targets import DeploymentTarget
 
 
 class RuntimeImageTests(unittest.TestCase):
-    """Verify one image manifest drives both local AMD64 and OCI ARM64 deployment."""
+    """Verify one image manifest drives GHCR installs on local AMD64 and OCI ARM64 hosts."""
 
     def _repository(self, root: Path) -> Path:
         """Create a minimal deployment repository configuration for isolated tests."""
@@ -66,13 +66,16 @@ class RuntimeImageTests(unittest.TestCase):
         )
         return root
 
-    def test_local_uses_amd64_local_image(self) -> None:
-        """Local laptop deployment consumes locally loaded AMD64 release images."""
+    def test_local_uses_amd64_registry_image(self) -> None:
+        """Local laptop deployment consumes the configured GHCR AMD64 image."""
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._repository(Path(tmp))
             references = DeploymentImageResolver(root, DeploymentTarget.LOCAL, "0.5.0").references()
-            self.assertEqual(references["core"], "agent-nebula/nebula-core:0.5.0-amd64")
+            self.assertEqual(
+                references["core"],
+                "ghcr.io/example/agent-nebula/nebula-core:0.5.0-amd64",
+            )
 
     def test_oci_uses_arm64_registry_image(self) -> None:
         """OCI deployment consumes pushed ARM64 images from configured GHCR namespace."""
@@ -85,7 +88,7 @@ class RuntimeImageTests(unittest.TestCase):
                 "ghcr.io/example/agent-nebula/nebula-core:0.5.0-arm64",
             )
 
-    def test_nebula_override_uses_same_release_for_services(self) -> None:
+    def test_nebula_override_uses_same_tag_for_services(self) -> None:
         """Generated Compose overrides change images without changing base service topology."""
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -97,8 +100,24 @@ class RuntimeImageTests(unittest.TestCase):
             )
             text = destination.read_text(encoding="utf-8")
             self.assertIn("nebula-database:\n    image: postgres:17", text)
-            self.assertIn("migrate:\n    image: agent-nebula/nebula-core:0.5.0-amd64", text)
-            self.assertIn("nebula-console:\n    image: agent-nebula/nebula-console:0.5.0-amd64", text)
+            self.assertIn(
+                "migrate:\n    image: ghcr.io/example/agent-nebula/nebula-core:0.5.0-amd64",
+                text,
+            )
+            self.assertIn(
+                "nebula-console:\n    image: ghcr.io/example/agent-nebula/nebula-console:0.5.0-amd64",
+                text,
+            )
+
+    def test_default_logical_latest_tag_maps_to_architecture_tag(self) -> None:
+        """Installation-facing latest resolves to the architecture-specific GHCR tag."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repository(Path(tmp))
+            local = DeploymentImageResolver(root, DeploymentTarget.LOCAL, "latest").references()
+            oci = DeploymentImageResolver(root, DeploymentTarget.OCI, "latest").references()
+            self.assertTrue(local["core"].endswith(":latest-amd64"))
+            self.assertTrue(oci["core"].endswith(":latest-arm64"))
 
 
 if __name__ == "__main__":

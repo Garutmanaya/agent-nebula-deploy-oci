@@ -20,9 +20,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--user", default="ubuntu")
     parser.add_argument("--identity-file", type=Path, required=True)
     parser.add_argument("--utils-repository", type=Path, required=True)
-    parser.add_argument("--release", required=True)
+    parser.add_argument("--tag", default="latest")
     parser.add_argument("--profile", choices=("local", "cloudflare"), default="local")
-    parser.add_argument("--phase", choices=("platform", "applications"), required=True)
+    parser.add_argument("--phase", choices=("prepare", "platform", "applications"), required=True)
     parser.add_argument("--compartment-ocid", required=True)
     parser.add_argument("--vault-ocid", required=True)
     parser.add_argument("--vault-key-ocid", required=True)
@@ -43,7 +43,7 @@ def main() -> int:
         identity_file=args.identity_file,
         repository_root=repository_root,
         utils_repository=utils_repository,
-        release=args.release,
+        image_tag=args.tag,
         profile=args.profile,
         phase=args.phase,
         compartment_ocid=args.compartment_ocid,

@@ -1,0 +1,28 @@
+# Copy this file outside the repository and edit it for the deployment host.
+# Example: /opt/agent-nebula/cloudflare/deployment.conf
+
+[deployment]
+runtime_root = /opt/agent-nebula
+version = local
+
+[public]
+ui_url = https://agentnebula.ai
+api_url = https://api.agentnebula.ai
+
+[certificates]
+# Public names are added to the existing localhost and internal service SANs.
+# Existing certificates are preserved unless service certificate regeneration
+# is explicitly requested.
+backend_common_name = api.agentnebula.ai
+backend_dns_names = api.agentnebula.ai,agentnebula.ai
+frontend_common_name = agentnebula.ai
+frontend_dns_names = agentnebula.ai
+
+[origin]
+frontend_url = https://localhost:5173
+backend_url = https://localhost:8000
+origin_server_name = localhost
+
+[cloudflare]
+tunnel_id = REPLACE_WITH_TUNNEL_UUID
+credentials_file = /opt/agent-nebula/cloudflare/credentials.json

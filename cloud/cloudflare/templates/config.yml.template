@@ -1,0 +1,26 @@
+tunnel: @CLOUDFLARE_TUNNEL_ID@
+credentials-file: @CLOUDFLARE_CREDENTIALS_FILE@
+
+ingress:
+  - hostname: @PUBLIC_UI_HOST@
+    service: @FRONTEND_ORIGIN_URL@
+    originRequest:
+      originServerName: @ORIGIN_SERVER_NAME@
+      caPool: @NEBULA_HOME@/nebula-ca/certs/root-ca.crt
+      connectTimeout: 10s
+
+  - hostname: @PUBLIC_API_HOST@
+    service: @BACKEND_ORIGIN_URL@
+    originRequest:
+      originServerName: @ORIGIN_SERVER_NAME@
+      caPool: @NEBULA_HOME@/nebula-ca/certs/root-ca.crt
+      connectTimeout: 10s
+
+  - hostname: @PUBLIC_EXPLORER_HOST@
+    service: @EXPLORER_ORIGIN_URL@
+    originRequest:
+      originServerName: @ORIGIN_SERVER_NAME@
+      caPool: @NEBULA_HOME@/nebula-ca/certs/root-ca.crt
+      connectTimeout: 10s
+
+  - service: http_status:404

@@ -3,7 +3,8 @@ WORKSPACE ?= ..
 MANIFEST ?= config/images.json
 REGISTRY_CONFIG ?= config/registry.json
 IMAGE ?= all
-RELEASE ?= dev
+RELEASE ?= 0.5.0
+TAG ?= latest
 
 TARGET ?= local
 PROFILE ?= local
@@ -16,7 +17,7 @@ PIPELINE = $(PYTHON) scripts/image_pipeline.py
 COMMON_ARGS = --manifest $(MANIFEST) --registry-config $(REGISTRY_CONFIG) --workspace $(WORKSPACE)
 PYTHON_ENV = PYTHONPATH=$(WORKSPACE)/agent-nebula-utils/src:$$PYTHONPATH
 LIFECYCLE = $(PYTHON_ENV) $(PYTHON) -m deploy.lifecycle
-LIFECYCLE_ARGS = $(PRODUCT) $(PROFILE) --target $(TARGET) --release $(RELEASE) $(if $(COMPONENT),--component $(COMPONENT),)
+LIFECYCLE_ARGS = $(PRODUCT) $(PROFILE) --target $(TARGET) --tag $(TAG) $(if $(COMPONENT),--component $(COMPONENT),)
 
 TF_STATE_BUCKET ?=
 TF_STATE_REGION ?= us-east-1
@@ -29,7 +30,7 @@ TF_APP_STATE_KEY := oci/application/terraform.tfstate
 .PHONY: help builder images registry check arm-build amd-build arm-push amd-push dry-run-arm dry-run-amd init-layout init deploy redeploy stop health logs destroy bootstrap secret-import test \
         tf-bootstrap-init tf-bootstrap-fmt tf-bootstrap-validate tf-bootstrap-plan tf-bootstrap-apply \
         tf-infra-init tf-infra-fmt tf-infra-validate tf-infra-plan tf-infra-apply tf-infra-destroy \
-        tf-app-init tf-app-fmt tf-app-validate tf-app-plan tf-app-apply
+        tf-app-init tf-app-fmt tf-app-validate tf-app-plan tf-app-apply cloudflare-init cloudflare-start cloudflare-stop cloudflare-restart cloudflare-status cloudflare-destroy
 
 help:
 	@printf '%s\n' \
@@ -40,12 +41,16 @@ help:
 	  '' \
 	  'Application commands:' \
 	  '  init deploy redeploy stop health logs destroy bootstrap secret-import' \
+	  '  Install selector: TAG=latest (default); images are always pulled from GHCR' \
 	  '  Selectors: TARGET=local|oci PROFILE=local|cloudflare PRODUCT=nebula|oauth|policy|playground' \
 	  '' \
-	  'Terraform Step 5:' \
+	  'Terraform:' \
 	  '  tf-bootstrap-*  Create the AWS S3 state backend' \
 	  '  tf-infra-*      Create OCI network/VM/Vault/Instance Principal' \
-	  '  tf-app-*        Deploy PHASE=platform|applications to OCI' \
+	  '  tf-app-*        Deploy PHASE=prepare|platform|applications to OCI' \
+	  '' \
+	  'Cloudflare:' \
+	  '  cloudflare-init/start/stop/restart/status/destroy TARGET=local|oci PROFILE=cloudflare' \
 	  '  Required backend env: TF_STATE_BUCKET=<bucket> TF_STATE_REGION=<region>'
 
 builder:
@@ -107,6 +112,24 @@ bootstrap:
 
 secret-import:
 	$(PYTHON_ENV) $(PYTHON) -m deployment.security.cli --target $(TARGET) --component $(COMPONENT) --name $(or $(SECRET_NAME),onboarding-api-key)
+
+cloudflare-init:
+	$(PYTHON_ENV) $(PYTHON) -m deployment.cloudflare init --target $(TARGET) --profile cloudflare
+
+cloudflare-start:
+	$(PYTHON_ENV) $(PYTHON) -m deployment.cloudflare start --target $(TARGET) --profile cloudflare
+
+cloudflare-stop:
+	$(PYTHON_ENV) $(PYTHON) -m deployment.cloudflare stop --target $(TARGET) --profile cloudflare
+
+cloudflare-restart:
+	$(PYTHON_ENV) $(PYTHON) -m deployment.cloudflare restart --target $(TARGET) --profile cloudflare
+
+cloudflare-status:
+	$(PYTHON_ENV) $(PYTHON) -m deployment.cloudflare status --target $(TARGET) --profile cloudflare
+
+cloudflare-destroy:
+	$(PYTHON_ENV) $(PYTHON) -m deployment.cloudflare destroy --target $(TARGET) --profile cloudflare
 
 test:
 	$(PYTHON_ENV) $(PYTHON) -m unittest discover -s tests -v
@@ -173,9 +196,9 @@ tf-app-validate: tf-app-init
 tf-app-plan: tf-app-init
 	TF_VAR_state_bucket=$(TF_STATE_BUCKET) TF_VAR_state_region=$(TF_STATE_REGION) \
 	  terraform -chdir=$(TF_APP_DIR) plan \
-	  -var="release=$(RELEASE)" -var="profile=$(PROFILE)" -var="deployment_phase=$(PHASE)"
+	  -var="image_tag=$(TAG)" -var="profile=$(PROFILE)" -var="deployment_phase=$(PHASE)"
 
 tf-app-apply: tf-app-init
 	TF_VAR_state_bucket=$(TF_STATE_BUCKET) TF_VAR_state_region=$(TF_STATE_REGION) \
 	  terraform -chdir=$(TF_APP_DIR) apply \
-	  -var="release=$(RELEASE)" -var="profile=$(PROFILE)" -var="deployment_phase=$(PHASE)"
+	  -var="image_tag=$(TAG)" -var="profile=$(PROFILE)" -var="deployment_phase=$(PHASE)"

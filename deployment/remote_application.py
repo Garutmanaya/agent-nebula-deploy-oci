@@ -63,7 +63,7 @@ class RemoteApplicationConfiguration:
     identity_file: Path
     repository_root: Path
     utils_repository: Path
-    release: str
+    image_tag: str
     profile: str
     phase: str
     compartment_ocid: str
@@ -73,8 +73,8 @@ class RemoteApplicationConfiguration:
     def validate(self) -> None:
         """Validate paths and lifecycle selectors before network operations begin."""
 
-        if self.phase not in {"platform", "applications"}:
-            raise ValueError("phase must be platform or applications")
+        if self.phase not in {"prepare", "platform", "applications"}:
+            raise ValueError("phase must be prepare, platform, or applications")
         if self.profile not in {"local", "cloudflare"}:
             raise ValueError("profile must be local or cloudflare")
         if not self.identity_file.expanduser().is_file():
@@ -271,12 +271,18 @@ class OciRemoteApplicationInstaller:
 
         common = (
             f"TARGET=oci PROFILE={shlex.quote(self._configuration.profile)} "
-            f"RELEASE={shlex.quote(self._configuration.release)}"
+            f"TAG={shlex.quote(self._configuration.image_tag)}"
         )
         make = (
             f"make PYTHON={self._REMOTE_VENV / 'bin/python'} "
             f"WORKSPACE={self._REMOTE_DEPENDENCY_ROOT}"
         )
+        if self._configuration.phase == "prepare":
+            return (
+                (f"{make} init {common} PRODUCT=policy", False),
+                (f"{make} init {common} PRODUCT=nebula", False),
+                (f"{make} init {common} PRODUCT=oauth", False),
+            )
         if self._configuration.phase == "platform":
             return (
                 (f"{make} init {common} PRODUCT=policy", False),

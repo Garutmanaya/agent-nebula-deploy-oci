@@ -14,6 +14,7 @@ locals {
   deployment_files = sort(concat(
     tolist(fileset(local.repository_root, "Makefile")),
     tolist(fileset(local.repository_root, "config/**")),
+    tolist(fileset(local.repository_root, "cloud/**")),
     tolist(fileset(local.repository_root, "deploy/**")),
     tolist(fileset(local.repository_root, "deployment/**")),
     tolist(fileset(local.repository_root, "scripts/*.py")),
@@ -26,7 +27,7 @@ locals {
 resource "terraform_data" "application" {
   triggers_replace = [
     data.terraform_remote_state.infrastructure.outputs.instance_id,
-    var.release,
+    var.image_tag,
     var.profile,
     var.deployment_phase,
     local.deployment_revision,
@@ -40,7 +41,7 @@ resource "terraform_data" "application" {
       "--user ${var.ssh_user}",
       "--identity-file ${var.ssh_private_key_path}",
       "--utils-repository ${var.utils_repository_path}",
-      "--release ${var.release}",
+      "--tag ${var.image_tag}",
       "--profile ${var.profile}",
       "--phase ${var.deployment_phase}",
       "--compartment-ocid ${data.terraform_remote_state.infrastructure.outputs.compartment_ocid}",

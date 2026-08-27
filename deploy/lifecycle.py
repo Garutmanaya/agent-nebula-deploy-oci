@@ -59,15 +59,15 @@ class HostDeploymentService:
         repository_root: Path,
         *,
         target: DeploymentTarget,
-        release: str,
+        image_tag: str,
     ) -> None:
-        """Capture host target, release, repository paths, and lifecycle collaborators."""
+        """Capture host target, image tag, repository paths, and lifecycle collaborators."""
 
         self._root = repository_root
         self._target = target
-        self._release = release
+        self._image_tag = image_tag
         self._environments = DeploymentEnvironmentService(target=target)
-        self._image_overrides = ComposeImageOverrideService(repository_root, target, release)
+        self._image_overrides = ComposeImageOverrideService(repository_root, target, image_tag)
         self._products = {
             "nebula": ComposeProduct(
                 file=self._root / "deploy" / "compose" / "compose.yml",
@@ -505,7 +505,7 @@ class HostDeploymentService:
             product=product,
             destination=(
                 environment.path.parent
-                / f"{product}.{self._target.value}.{self._release}.images.yml"
+                / f"{product}.{self._target.value}.{self._image_tag}.images.yml"
             ),
         )
         subprocess.run(
@@ -678,7 +678,7 @@ def _parse_args() -> argparse.Namespace:
         choices=tuple(target.value for target in DeploymentTarget),
         default=DeploymentTarget.LOCAL.value,
     )
-    parser.add_argument("--release", default="dev")
+    parser.add_argument("--tag", default="latest")
     return parser.parse_args()
 
 
@@ -690,7 +690,7 @@ def main() -> int:
     applicable = HostDeploymentService(
         repository_root,
         target=DeploymentTarget(args.target),
-        release=args.release,
+        image_tag=args.tag,
     ).run(
         action=args.action,
         product=args.product,

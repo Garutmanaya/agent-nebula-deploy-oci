@@ -15,13 +15,14 @@ variable "infrastructure_state_key" {
   default     = "oci/infrastructure/terraform.tfstate"
 }
 
-variable "release" {
-  description = "Agent Nebula image release to deploy, for example 0.5.0."
+variable "image_tag" {
+  description = "Logical GHCR image tag to install. The target architecture suffix is appended automatically."
   type        = string
+  default     = "latest"
 }
 
 variable "profile" {
-  description = "Agent Nebula deployment profile. Cloudflare initialization is added independently in Step 6."
+  description = "Agent Nebula deployment profile; Cloudflare host integration is configured independently."
   type        = string
   default     = "local"
 
@@ -32,13 +33,13 @@ variable "profile" {
 }
 
 variable "deployment_phase" {
-  description = "platform deploys/bootstrap Core services; applications deploys Explorer and Playground after API keys exist."
+  description = "prepare initializes host material only; platform deploys/bootstrap Core services; applications deploys Explorer and Playground after API keys exist."
   type        = string
   default     = "platform"
 
   validation {
-    condition     = contains(["platform", "applications"], var.deployment_phase)
-    error_message = "deployment_phase must be platform or applications."
+    condition     = contains(["prepare", "platform", "applications"], var.deployment_phase)
+    error_message = "deployment_phase must be prepare, platform, or applications."
   }
 }
 

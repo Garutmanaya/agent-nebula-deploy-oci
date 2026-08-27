@@ -1,23 +1,34 @@
 # OCI Application Deployment
 
 This Terraform root orchestrates the existing `agent-nebula-deploy-oci` lifecycle over SSH. It does
-not reimplement application initialization, Compose ordering, bootstrap, or health logic.
+not reimplement initialization, Compose ordering, platform bootstrap, Cloudflare host integration or
+health logic. Runtime images always come from the GHCR destination in `config/registry.json`.
 
-`deployment_phase = "platform"` performs:
+`image_tag` defaults to `latest`; the OCI target resolves it to `latest-arm64`.
+
+The supported deployment phases are:
 
 ```text
-init Policy/Core/OAuth
--> deploy Policy/Database/Core/OAuth/Console
--> health
--> existing interactive platform-bootstrap
+prepare
+  initialize Policy/Nebula/OAuth profile material only
+  used before independent Cloudflare Tunnel setup
+
+platform
+  initialize Policy/Nebula/OAuth
+  deploy Policy/Database/Core/OAuth/Console
+  health
+  existing interactive platform-bootstrap
+
+applications
+  initialize/deploy/health Explorer
+  initialize/deploy/health Playground
 ```
 
-The bootstrap intentionally remains interactive and unchanged. It asks for Admin, Explorer,
-Playground, and Studio account passwords inside the running Core container.
+For Cloudflare, run `prepare` with `profile = "cloudflare"`, configure the named tunnel independently,
+then run `platform` and `applications` using the same profile.
 
-After bootstrap, create Explorer and Playground Provider API keys in Console and import them on the
-VM using the existing secure CLI. Then set `deployment_phase = "applications"` and re-apply. That
-phase initializes/deploys Explorer and Playground and runs their health checks.
+The bootstrap intentionally remains interactive and unchanged. After bootstrap, create Explorer and
+Playground Provider API keys in Console and import them on the VM using the secure secret-import CLI.
 
 Private GHCR packages require `GHCR_TOKEN` in the operator shell when Terraform applies. The token is
 piped over SSH to Docker, Docker configuration is placed under host `/run`, and logout/removal occurs

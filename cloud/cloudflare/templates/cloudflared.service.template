@@ -1,0 +1,16 @@
+[Unit]
+Description=Cloudflare Tunnel for Agent Nebula
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=@CLOUDFLARED_BIN@ tunnel --config @NEBULA_HOME@/cloudflare/config.yml run
+Restart=always
+RestartSec=5
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+
+[Install]
+WantedBy=multi-user.target
