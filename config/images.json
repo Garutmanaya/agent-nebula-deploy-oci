@@ -1,7 +1,9 @@
 {
   "schema_version": 1,
   "defaults": {
-    "platforms": ["linux/arm64"]
+    "platforms": [
+      "linux/arm64"
+    ]
   },
   "images": [
     {
@@ -11,7 +13,8 @@
       "dockerfile": "docker/Dockerfile",
       "context": ".",
       "build_contexts": {
-        "agent_nebula_policy_sdk": "../agent-nebula-policy-sdk"
+        "agent_nebula_policy_sdk": "../agent-nebula-policy-sdk",
+        "agent_nebula_utils": "../agent-nebula-utils"
       },
       "enabled": true
     },
