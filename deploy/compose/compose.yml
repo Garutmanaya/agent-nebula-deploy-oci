@@ -30,7 +30,7 @@ services:
       - ${DEPLOY_SECURITY_SOURCE_ROOT}/database/certs/server.key:/run/agent-nebula/database/pki/server.key:ro
       - ${DEPLOY_SECURITY_SOURCE_ROOT}/nebula-ca/certs/root-ca.crt:/run/agent-nebula/database/pki/root-ca.crt:ro
       - ${DEPLOY_SECURITY_SOURCE_ROOT}/database/secrets/service-password:/run/secrets/database-password:ro
-      - ./postgres-entrypoint-tls.sh:/usr/local/bin/postgres-entrypoint-tls.sh:ro
+      - ${ANU_HOME}/deploy/assets/postgres-entrypoint-tls.sh:/usr/local/bin/postgres-entrypoint-tls.sh:ro
     healthcheck:
       test:
         - CMD-SHELL

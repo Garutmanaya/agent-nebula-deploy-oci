@@ -293,6 +293,7 @@ class NebulaBootstrapService:
         self._topology = NebulaDeploymentTopology(self._settings)
         self._pki = DeploymentLocalPkiService(self._settings)
         self._openssl = OpenSslExecutor()
+        self._deployment_assets_destination = Path(environment["ANU_HOME"]) / "deploy" / "assets"
 
     def initialize(
         self,
@@ -336,6 +337,7 @@ class NebulaBootstrapService:
         for name in selected:
             anu_initialize_durable_directory(directories[name])
 
+        self._install_deployment_assets()
         if "core" in selected:
             self._initialize_product_directories()
         if "database" in selected:
@@ -354,6 +356,25 @@ class NebulaBootstrapService:
             self._synchronize_core_ca_private_key(ca.private_key)
         self._issue_transport_identities(force=force_pki, component=component)
         return True
+
+    def _install_deployment_assets(self) -> None:
+        """Install host-visible files required by Compose bind mounts.
+
+        Compose may execute from inside the installer container while talking to the host Docker
+        daemon. Repository-relative bind sources are therefore not visible to Docker. Copy packaged
+        deployment assets into ``ANU_HOME`` so direct CLI and installer execution use one host path.
+        """
+
+        source = Path(__file__).resolve().parents[1] / "assets"
+        if not source.is_dir():
+            raise FileNotFoundError(f"Deployment assets directory is missing: {source}")
+        self._deployment_assets_destination.mkdir(parents=True, exist_ok=True)
+        for asset in source.iterdir():
+            if not asset.is_file():
+                continue
+            destination = self._deployment_assets_destination / asset.name
+            shutil.copyfile(asset, destination)
+            destination.chmod(asset.stat().st_mode & 0o777)
 
     def _initialize_product_directories(self) -> None:
         """Create Nebula-specific state directories not part of the generic Utils layout."""

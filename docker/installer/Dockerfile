@@ -19,6 +19,7 @@ RUN apt-get update \
        lsb-release \
        make \
        openssl \
+       util-linux \
        unzip \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg \

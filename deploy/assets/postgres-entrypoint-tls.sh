@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Script: deploy/compose/postgres-entrypoint-tls.sh
+# Script: deploy/assets/postgres-entrypoint-tls.sh
 # Purpose:
 #   Prepare PostgreSQL's TLS files with the ownership and permissions required
 #   by the official PostgreSQL image, then delegate to its normal entrypoint.
