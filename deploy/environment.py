@@ -25,6 +25,7 @@ from agent_nebula_utils import (
     anu_load_settings,
 )
 from agent_nebula_utils.environment import EnvironmentFileService
+from deployment.runtime_images import DeploymentImageResolver
 from deployment.targets import DeploymentTarget
 
 from agent_nebula_utils.environment.definitions import (
@@ -60,12 +61,16 @@ class DeploymentEnvironmentService:
         environment: Mapping[str, str] | None = None,
         *,
         target: DeploymentTarget = DeploymentTarget.LOCAL,
+        repository_root: Path | None = None,
+        image_tag: str = "latest",
     ) -> None:
         """Resolve shared defaults and capture the host/image deployment target."""
 
         self._infrastructure = anu_load_settings(environment)
         self._deployment = anu_load_deployment_settings(environment)
         self._target = target
+        self._repository_root = repository_root
+        self._image_tag = image_tag
         self._files = EnvironmentFileService()
 
     def generate(
@@ -78,6 +83,7 @@ class DeploymentEnvironmentService:
 
         self._validate_selection(product=product, profile=profile)
         values = self._common_values(profile)
+        values.update(self._image_values(product))
         values.update(self._profile_values(profile))
         if product == "nebula":
             values.update(self._nebula_values(profile, values))
@@ -91,7 +97,7 @@ class DeploymentEnvironmentService:
             values.update(self._studio_values(profile))
 
         destination = self._path(product=product, profile=profile)
-        self._files.write(destination, values)
+        self._files.write_sections(destination, self._categorized_sections(values))
         return DeploymentEnvironmentFile(path=destination, values=values)
 
     def load(self, *, product: str, profile: str) -> DeploymentEnvironmentFile:
@@ -128,25 +134,20 @@ class DeploymentEnvironmentService:
         return {
             InfrastructureEnvironment.HOME.name: str(self._infrastructure.home),
             InfrastructureEnvironment.RUNTIME_HOME.name: str(self._infrastructure.runtime_home),
+            InfrastructureEnvironment.SECURITY_INPUT_ROOT.name: str(
+                self._infrastructure.security_input_root
+            ),
+            "DEPLOY_SECURITY_SOURCE_ROOT": (
+                str(self._infrastructure.home)
+                if self._target is DeploymentTarget.LOCAL
+                else "/run/agent-nebula-security-staging"
+            ),
+            "DEPLOY_SECURITY_STAGING_ROOT": "/run/agent-nebula-security-staging",
             InfrastructureEnvironment.DEPLOYMENT_PROFILE.name: profile,
             InfrastructureEnvironment.RUNTIME_MODE.name: profile,
             DeploymentEnvironment.CONTAINER_UID.name: str(self._deployment.container_uid),
             DeploymentEnvironment.CONTAINER_GID.name: str(self._deployment.container_gid),
-            DeploymentEnvironment.SECRET_ENCRYPTION.name: (
-                "none" if self._target is DeploymentTarget.LOCAL else "masker-key"
-            ),
-            DeploymentEnvironment.MASKER_KEY_FILE.name: str(
-                DeploymentEnvironment.MASKER_KEY_FILE.default
-            ),
             DeploymentEnvironment.IMAGE_SOURCE.name: self._target.image_source,
-            DeploymentEnvironment.CORE_IMAGE.name: self._deployment.core_image,
-            DeploymentEnvironment.CONSOLE_IMAGE.name: self._deployment.console_image,
-            DeploymentEnvironment.EXPLORER_IMAGE.name: self._deployment.explorer_image,
-            DeploymentEnvironment.MIGRATION_IMAGE.name: self._deployment.migration_image,
-            DeploymentEnvironment.POSTGRES_IMAGE.name: self._deployment.postgres_image,
-            DeploymentEnvironment.OAUTH_IMAGE.name: self._deployment.oauth_image,
-            DeploymentEnvironment.POLICY_IMAGE.name: self._deployment.policy_image,
-            DeploymentEnvironment.STUDIO_IMAGE.name: self._deployment.studio_image,
             DeploymentEnvironment.LOCAL_HOSTNAME.name: hostname,
             FilesystemEnvironment.CONFIG_DIR.name: self._infrastructure.config_dir,
             FilesystemEnvironment.SECRETS_DIR.name: self._infrastructure.secrets_dir,
@@ -176,6 +177,101 @@ class DeploymentEnvironmentService:
                 self._infrastructure.trust_bundle_filename
             ),
         }
+
+    def _image_values(self, product: str) -> dict[str, str]:
+        """Return only effective image references used by the selected product."""
+
+        if self._repository_root is None:
+            return {}
+        references = DeploymentImageResolver(
+            self._repository_root,
+            self._target,
+            self._image_tag,
+        ).references()
+        if product == "nebula":
+            return {
+                DeploymentEnvironment.CORE_IMAGE.name: references["core"],
+                DeploymentEnvironment.CONSOLE_IMAGE.name: references["console"],
+                DeploymentEnvironment.EXPLORER_IMAGE.name: references["explorer"],
+                DeploymentEnvironment.MIGRATION_IMAGE.name: references["core"],
+                DeploymentEnvironment.POSTGRES_IMAGE.name: "postgres:17",
+            }
+        if product == "oauth":
+            return {DeploymentEnvironment.OAUTH_IMAGE.name: references["oauth"]}
+        if product == "policy":
+            return {DeploymentEnvironment.POLICY_IMAGE.name: references["policy"]}
+        if product == "studio":
+            return {DeploymentEnvironment.STUDIO_IMAGE.name: self._deployment.studio_image}
+        return {}
+
+    @staticmethod
+    def _categorized_sections(values: Mapping[str, str]) -> dict[str, dict[str, str]]:
+        """Group generated values for readable operator-owned environment files."""
+
+        sections: dict[str, dict[str, str]] = {
+            "Deployment": {},
+            "Images": {},
+            "Filesystem & Runtime": {},
+            "Database": {},
+            "Core": {},
+            "Console": {},
+            "Explorer": {},
+            "OAuth": {},
+            "Policy": {},
+            "Playground": {},
+            "Cloudflare": {},
+            "Cloud Run / GCP": {},
+            "Integration": {},
+            "Other": {},
+        }
+        filesystem_names = {
+            "ANU_HOME", "ANU_RUNTIME_HOME", "ANU_SECURITY_INPUT_ROOT",
+            "DEPLOY_SECURITY_SOURCE_ROOT", "DEPLOY_SECURITY_STAGING_ROOT",
+            "ANU_CONFIG_DIR", "ANU_SECRETS_DIR", "ANU_CERTS_DIR",
+            "ANU_DATA_DIR", "ANU_LOGS_DIR", "ANU_TMP_DIR", "ANU_PKI_DIR",
+            "ANU_APPLICATION_CONFIG_FILENAME", "ANU_ONBOARDING_API_KEY_FILENAME",
+            "ANU_OAUTH_AUTH_KEY_FILENAME", "ANU_OAUTH_DPOP_KEY_FILENAME",
+            "ANU_TLS_CERT_FILENAME", "ANU_TLS_KEY_FILENAME",
+            "ANU_ROOT_CA_FILENAME", "ANU_TRUST_BUNDLE_FILENAME",
+        }
+        deployment_names = {
+            "ANU_DEPLOYMENT_PROFILE", "ANU_RUNTIME_MODE",
+            "ANU_CONTAINER_UID", "ANU_CONTAINER_GID",
+            "ANU_DEPLOY_IMAGE_SOURCE", "ANU_DEPLOY_LOCAL_HOSTNAME",
+            "ANU_DEPLOY_PUBLIC_UI_HOST", "ANU_DEPLOY_PUBLIC_API_HOST",
+            "ANU_DEPLOY_PUBLIC_EXPLORER_HOST",
+        }
+        for name, value in values.items():
+            if name.endswith("_IMAGE"):
+                section = "Images"
+            elif name in filesystem_names:
+                section = "Filesystem & Runtime"
+            elif name in deployment_names:
+                section = "Deployment"
+            elif "_DATABASE_" in name:
+                section = "Database"
+            elif name.startswith("ANU_CORE_"):
+                section = "Core"
+            elif name.startswith("ANU_CONSOLE_"):
+                section = "Console"
+            elif name.startswith("ANU_EXPLORER_"):
+                section = "Explorer"
+            elif name.startswith("ANU_OAUTH_"):
+                section = "OAuth"
+            elif name.startswith("ANU_POLICY_"):
+                section = "Policy"
+            elif name.startswith("ANU_PLAYGROUND_"):
+                section = "Playground"
+            elif name.startswith("ANU_DEPLOY_CLOUDFLARE_"):
+                section = "Cloudflare"
+            elif name.startswith(("ANU_DEPLOY_GCP_", "ANU_DEPLOY_CLOUDRUN_")):
+                section = "Cloud Run / GCP"
+            elif name in {"ANU_NEBULA_URL"}:
+                section = "Integration"
+            else:
+                section = "Other"
+            sections[section][name] = value
+        return sections
 
     def _profile_values(self, profile: str) -> dict[str, str]:
         """Return only variables relevant to the selected deployment profile."""

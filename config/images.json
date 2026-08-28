@@ -104,6 +104,17 @@
       "dockerfile": "docker/playground-ui/Dockerfile",
       "context": ".",
       "enabled": true
+    },
+    {
+      "name": "installer",
+      "repository": "agent-nebula-deploy-oci",
+      "image": "nebula-installer",
+      "dockerfile": "docker/installer/Dockerfile",
+      "context": ".",
+      "build_contexts": {
+        "agent_nebula_utils": "../agent-nebula-utils"
+      },
+      "enabled": true
     }
   ]
 }

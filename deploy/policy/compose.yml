@@ -1,5 +1,6 @@
 services:
   nebula-policy:
+    container_name: agent-nebula-policy
     image: ${ANU_DEPLOY_POLICY_IMAGE}
     restart: unless-stopped
     init: true
@@ -13,15 +14,13 @@ services:
       ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/${ANU_POLICY_INSTANCE}
       ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
       ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
-      ANU_SECRET_ENCRYPTION: ${ANU_SECRET_ENCRYPTION}
-      ANU_MASKER_KEY_FILE: ${ANU_MASKER_KEY_FILE}
+      ANU_SECURITY_INPUT_ROOT: /mnt/agent-nebula-security/${ANU_POLICY_INSTANCE}
     volumes:
-      - ${ANU_HOME}/${ANU_POLICY_INSTANCE}/certs:${ANU_HOME}/${ANU_POLICY_INSTANCE}/certs:ro
-      - ${ANU_RUNTIME_HOME}/nebula-ca/pki:${ANU_HOME}/nebula-ca/certs:ro
+      - ${DEPLOY_SECURITY_SOURCE_ROOT}/${ANU_POLICY_INSTANCE}:/mnt/agent-nebula-security/${ANU_POLICY_INSTANCE}:ro
+      - ${DEPLOY_SECURITY_SOURCE_ROOT}/nebula-ca/certs:${ANU_HOME}/nebula-ca/certs:ro
       - ${ANU_HOME}/${ANU_POLICY_INSTANCE}/data:${ANU_HOME}/${ANU_POLICY_INSTANCE}/data:rw
       - ${ANU_HOME}/${ANU_POLICY_INSTANCE}/logs:${ANU_HOME}/${ANU_POLICY_INSTANCE}/logs:rw
       - ${ANU_HOME}/${ANU_POLICY_INSTANCE}/tmp:${ANU_HOME}/${ANU_POLICY_INSTANCE}/tmp:rw
-      - ${ANU_MASKER_KEY_FILE}:${ANU_MASKER_KEY_FILE}:ro
     healthcheck:
       test:
         - CMD

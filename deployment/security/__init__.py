@@ -7,11 +7,9 @@ only authenticated encrypted cache files on persistent VM storage.
 
 from .factory import build_security_persistence_service
 from .persistence import OciSecurityPersistenceService, SecurityPersistenceService
-from .runtime import HostRuntimeSecurityService
 from .vault import OciVaultConfiguration, OciVaultSecretClient
 
 __all__ = [
-    "HostRuntimeSecurityService",
     "build_security_persistence_service",
     "OciSecurityPersistenceService",
     "OciVaultConfiguration",

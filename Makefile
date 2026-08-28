@@ -38,6 +38,7 @@ help:
 	  '  builder / images / check' \
 	  '  arm-build / arm-push     IMAGE=all RELEASE=0.5.0' \
 	  '  amd-build / amd-push     IMAGE=all RELEASE=0.5.0' \
+	  '  Installer only:          IMAGE=installer' \
 	  '' \
 	  'Application commands:' \
 	  '  init deploy redeploy stop health logs destroy bootstrap secret-import' \

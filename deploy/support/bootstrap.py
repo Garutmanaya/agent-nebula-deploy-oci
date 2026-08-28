@@ -349,7 +349,9 @@ class NebulaBootstrapService:
 
         # The root CA is shared infrastructure across products/components and is therefore never
         # rotated by a product-scoped init force. Missing CA material is still created normally.
-        self._pki.ensure_ca(force=False)
+        ca = self._pki.ensure_ca(force=False)
+        if "core" in selected:
+            self._synchronize_core_ca_private_key(ca.private_key)
         self._issue_transport_identities(force=force_pki, component=component)
         return True
 
@@ -389,6 +391,14 @@ class NebulaBootstrapService:
     def _synchronize_database_password(*, source: Path, destination: Path) -> None:
         """Copy the database password into a consumer-owned durable secret location."""
 
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        destination.chmod(0o600)
+
+    def _synchronize_core_ca_private_key(self, source: Path) -> None:
+        """Copy the platform CA key into Core's component-owned security input tree."""
+
+        destination = self._topology.core.secrets / "pki" / "root-ca.key"
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
         destination.chmod(0o600)

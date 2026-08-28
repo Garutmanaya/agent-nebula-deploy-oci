@@ -46,7 +46,7 @@ def _service(tmp_path: Path) -> tuple[OciSecurityPersistenceService, InMemoryVau
     service = OciSecurityPersistenceService(
         topology=topology,
         vault=vault,  # type: ignore[arg-type]
-        masker_key_file=tmp_path / "run" / "masker-key",
+        staging_root=tmp_path / "staging",
     )
     return service, vault
 
@@ -90,3 +90,20 @@ def test_finalize_keeps_public_certificate_readable_while_backing_it_up(tmp_path
 
     assert certificate.read_bytes() == b"public-certificate"
     assert b"public-certificate" in vault.values.values()
+
+
+def test_prepare_for_deployment_materializes_plaintext_only_to_staging(tmp_path: Path) -> None:
+    """OCI deployment decrypts cache into staging without writing a master-key file."""
+
+    service, _ = _service(tmp_path)
+    secret = service.topology.oauth.secrets / "database" / "service-password"
+    secret.parent.mkdir(parents=True)
+    secret.write_bytes(b"oauth-database-secret")
+    service.finalize_initialization()
+
+    staging = service.prepare_for_deployment()
+    staged = staging / secret.relative_to(service.topology.settings.home)
+
+    assert staged.read_bytes() == b"oauth-database-secret"
+    assert AesGcmFileCipher.is_encrypted_bytes(secret.read_bytes())
+    assert not (tmp_path / "run" / "masker-key").exists()

@@ -1,5 +1,6 @@
 services:
   playground-container:
+    container_name: agent-nebula-playground
     image: agent-nebula/nebula-playground:dev
     restart: unless-stopped
     init: true
@@ -12,8 +13,7 @@ services:
       ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/playground/container
       ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
       ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
-      ANU_SECRET_ENCRYPTION: ${ANU_SECRET_ENCRYPTION}
-      ANU_MASKER_KEY_FILE: ${ANU_MASKER_KEY_FILE}
+      ANU_SECURITY_INPUT_ROOT: /mnt/agent-nebula-security/playground/container
       ANU_PLAYGROUND_NEBULA_URL: ${ANU_PLAYGROUND_NEBULA_URL}
       ANU_OAUTH_PUBLIC_URL: ${ANU_OAUTH_PUBLIC_URL}
       ANU_PLAYGROUND_PUBLIC_URL: ${ANU_PLAYGROUND_PUBLIC_URL}
@@ -37,12 +37,9 @@ services:
       # Playground container test does. The application creates/manages config,
       # data, logs, tmp, and experiment state below ANU_INSTANCE_ROOT.
       - ${ANU_HOME}/playground/container:${ANU_HOME}/playground/container:rw
-      # Security material remains read-only even though the parent durable root is
-      # writable for application-owned state. Child mounts override the parent mount.
-      - ${ANU_HOME}/playground/container/secrets:${ANU_HOME}/playground/container/secrets:ro
-      - ${ANU_HOME}/playground/container/certs:${ANU_HOME}/playground/container/certs:ro
-      - ${ANU_RUNTIME_HOME}/nebula-ca/pki/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
-      - ${ANU_MASKER_KEY_FILE}:${ANU_MASKER_KEY_FILE}:ro
+      # Security input is exposed through one component-owned read-only tree.
+      - ${DEPLOY_SECURITY_SOURCE_ROOT}/playground/container:/mnt/agent-nebula-security/playground/container:ro
+      - ${DEPLOY_SECURITY_SOURCE_ROOT}/nebula-ca/certs/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
     healthcheck:
       test:
         - CMD
@@ -55,6 +52,7 @@ services:
       start_period: 15s
 
   playground-backend:
+    container_name: agent-nebula-playground-backend
     image: agent-nebula/nebula-playground-backend:dev
     restart: unless-stopped
     init: true
@@ -67,8 +65,7 @@ services:
       ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/playground/backend
       ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
       ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
-      ANU_SECRET_ENCRYPTION: ${ANU_SECRET_ENCRYPTION}
-      ANU_MASKER_KEY_FILE: ${ANU_MASKER_KEY_FILE}
+      ANU_SECURITY_INPUT_ROOT: /mnt/agent-nebula-security/playground/backend
       ANU_PLAYGROUND_PUBLIC_URL: ${ANU_PLAYGROUND_PUBLIC_URL}
       ANU_PLAYGROUND_BACKEND_PUBLIC_URL: ${ANU_PLAYGROUND_BACKEND_PUBLIC_URL}
       ANU_PLAYGROUND_BACKEND_HOST: ${ANU_PLAYGROUND_BACKEND_HOST}
@@ -78,10 +75,8 @@ services:
       # Backend follows the same durable-root contract as its standalone test:
       # /opt is host-owned durable state; /run remains container-owned runtime state.
       - ${ANU_HOME}/playground/backend:${ANU_HOME}/playground/backend:rw
-      - ${ANU_HOME}/playground/backend/certs:${ANU_HOME}/playground/backend/certs:ro
-      - ${ANU_HOME}/playground/backend/secrets:${ANU_HOME}/playground/backend/secrets:ro
-      - ${ANU_RUNTIME_HOME}/nebula-ca/pki/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
-      - ${ANU_MASKER_KEY_FILE}:${ANU_MASKER_KEY_FILE}:ro
+      - ${DEPLOY_SECURITY_SOURCE_ROOT}/playground/backend:/mnt/agent-nebula-security/playground/backend:ro
+      - ${DEPLOY_SECURITY_SOURCE_ROOT}/nebula-ca/certs/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
     depends_on:
       playground-container:
         condition: service_healthy
@@ -97,6 +92,7 @@ services:
       start_period: 10s
 
   playground-ui:
+    container_name: agent-nebula-playground-ui
     image: agent-nebula/nebula-playground-ui:dev
     restart: unless-stopped
     init: true
@@ -109,6 +105,7 @@ services:
       ANU_INSTANCE_RUNTIME_ROOT: ${ANU_RUNTIME_HOME}/playground/ui
       ANU_DEPLOYMENT_PROFILE: ${ANU_DEPLOYMENT_PROFILE}
       ANU_RUNTIME_MODE: ${ANU_RUNTIME_MODE}
+      ANU_SECURITY_INPUT_ROOT: /mnt/agent-nebula-security/playground/ui
       ANU_CERTS_DIR: ${ANU_CERTS_DIR}
       ANU_TLS_CERT_FILENAME: ${ANU_TLS_CERT_FILENAME}
       ANU_TLS_KEY_FILENAME: ${ANU_TLS_KEY_FILENAME}
@@ -120,8 +117,8 @@ services:
       ANU_PLAYGROUND_UI_TLS_CERTIFICATE_FILE: ${ANU_RUNTIME_HOME}/playground/ui/pki/${ANU_TLS_CERT_FILENAME}
       ANU_PLAYGROUND_UI_TLS_PRIVATE_KEY_FILE: ${ANU_RUNTIME_HOME}/playground/ui/pki/${ANU_TLS_KEY_FILENAME}
     volumes:
-      - ${ANU_RUNTIME_HOME}/playground/ui/pki:${ANU_RUNTIME_HOME}/playground/ui/pki:ro
-      - ${ANU_RUNTIME_HOME}/nebula-ca/pki/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
+      - ${DEPLOY_SECURITY_SOURCE_ROOT}/playground/ui:/mnt/agent-nebula-security/playground/ui:ro
+      - ${DEPLOY_SECURITY_SOURCE_ROOT}/nebula-ca/certs/root-ca.crt:${ANU_HOME}/nebula-ca/certs/root-ca.crt:ro
     depends_on:
       playground-backend:
         condition: service_healthy

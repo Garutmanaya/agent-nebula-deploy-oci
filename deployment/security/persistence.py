@@ -1,15 +1,15 @@
-"""Durable security persistence and OCI encrypted-cache lifecycle.
+"""Durable OCI security persistence and plaintext host-staging lifecycle.
 
-OCI Vault is authoritative. Persistent VM files are only an encrypted cache using the same paths
-that the existing deployment already mounts. During explicit initialization the cache is briefly
-unsealed so existing bootstrap code can run unchanged, then immediately synchronized to Vault and
-sealed again.
+OCI Vault is authoritative. Persistent VM files remain an authenticated encrypted cache for
+private material. Before containers start, this service decrypts required security material into
+an ephemeral host staging tree. The masker/master key never leaves process memory.
 """
 
 from __future__ import annotations
 
 import base64
 import os
+import shutil
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,11 +21,11 @@ from .vault import OciVaultSecretClient
 
 
 class SecurityPersistenceService(ABC):
-    """Define target-specific persistence hooks around the existing initialization lifecycle."""
+    """Define target-specific persistence hooks around initialization and deployment."""
 
     @abstractmethod
-    def prepare_for_deployment(self) -> None:
-        """Restore runtime key material and any missing durable cache before deployment."""
+    def prepare_for_deployment(self) -> Path:
+        """Prepare and return a plaintext host security source for container deployment."""
 
     @abstractmethod
     def prepare_for_initialization(self) -> None:
@@ -42,23 +42,32 @@ class SecurityPersistenceService(ABC):
 
 @dataclass(slots=True)
 class OciSecurityPersistenceService(SecurityPersistenceService):
-    """Use OCI Vault as source of truth and encrypt only private VM-local security material."""
+    """Use OCI Vault as source of truth and encrypted VM-local cache for private material."""
 
     topology: AgentNebulaDeploymentTopology
     vault: OciVaultSecretClient
-    masker_key_file: Path
+    staging_root: Path
 
-    _MASKER_SECRET_NAME = "anu-masker-key"
+    _MASTER_SECRET_NAME = "anu-masker-key"  # Preserve the existing Vault secret name.
     _FILE_SECRET_PREFIX = "anu-file-"
 
-    def prepare_for_deployment(self) -> None:
-        """Restore the runtime masker key and any missing encrypted cache files from Vault."""
+    def prepare_for_deployment(self) -> Path:
+        """Restore encrypted cache and materialize plaintext files into ephemeral host staging."""
 
         cipher = self._cipher()
         self._restore_from_vault(cipher)
+        self._prepare_staging_root()
+        for path in self._security_files():
+            payload = path.read_bytes()
+            plaintext = cipher.decrypt(payload) if AesGcmFileCipher.is_encrypted_bytes(payload) else payload
+            destination = self.staging_root / path.resolve().relative_to(
+                self.topology.settings.home.resolve()
+            )
+            self._atomic_write(destination, plaintext, mode=self._source_mode(path))
+        return self.staging_root
 
     def prepare_for_initialization(self) -> None:
-        """Restore missing Vault material and decrypt cache files for unchanged bootstrap code."""
+        """Restore missing Vault material and temporarily unseal cache for bootstrap compatibility."""
 
         cipher = self._cipher()
         self._restore_from_vault(cipher)
@@ -68,16 +77,12 @@ class OciSecurityPersistenceService(SecurityPersistenceService):
                 self._atomic_write(path, cipher.decrypt(payload), mode=self._source_mode(path))
 
     def finalize_initialization(self) -> None:
-        """Upload security files to Vault and encrypt only private material on persistent disk."""
+        """Upload security files to Vault and encrypt private material on persistent disk."""
 
         cipher = self._cipher()
         for path in self._security_files():
             payload = path.read_bytes()
-            plaintext = (
-                cipher.decrypt(payload)
-                if AesGcmFileCipher.is_encrypted_bytes(payload)
-                else payload
-            )
+            plaintext = cipher.decrypt(payload) if AesGcmFileCipher.is_encrypted_bytes(payload) else payload
             self.vault.put(self._vault_name(path), plaintext)
             mode = self._source_mode(path)
             cached = cipher.encrypt(plaintext) if mode == 0o600 else plaintext
@@ -92,16 +97,21 @@ class OciSecurityPersistenceService(SecurityPersistenceService):
         self._atomic_write(destination, self._cipher().encrypt(value), mode=0o600)
 
     def _cipher(self) -> AesGcmFileCipher:
-        """Restore or create the Vault-owned masker key and expose it only through host ``/run``."""
+        """Return a cipher using the Vault-owned master key held only in process memory."""
 
-        key = self.vault.get(self._MASKER_SECRET_NAME)
+        key = self.vault.get(self._MASTER_SECRET_NAME)
         if key is None:
             key = AesGcmFileCipher.generate_key()
-            self.vault.put(self._MASKER_SECRET_NAME, key)
-        encoded = AesGcmFileCipher.encode_key(key)
-        self.masker_key_file.parent.mkdir(parents=True, exist_ok=True)
-        self._atomic_write(self.masker_key_file, encoded, mode=0o600)
+            self.vault.put(self._MASTER_SECRET_NAME, key)
         return AesGcmFileCipher(key)
+
+    def _prepare_staging_root(self) -> None:
+        """Recreate the plaintext staging root so stale security files cannot survive deployment."""
+
+        root = self.staging_root.expanduser().resolve()
+        if root.exists():
+            shutil.rmtree(root)
+        root.mkdir(parents=True, mode=0o700)
 
     def _restore_from_vault(self, cipher: AesGcmFileCipher) -> None:
         """Recreate encrypted local cache files from Vault on a fresh or rebuilt VM."""
@@ -124,7 +134,7 @@ class OciSecurityPersistenceService(SecurityPersistenceService):
             self._atomic_write(destination, cached, mode=mode)
 
     def _security_files(self) -> tuple[Path, ...]:
-        """Return regular durable secret/certificate files across all managed components and CA."""
+        """Return regular durable secret/certificate files across managed components and CA."""
 
         roots: list[Path] = []
         directories = (
@@ -151,21 +161,14 @@ class OciSecurityPersistenceService(SecurityPersistenceService):
         for root in roots:
             if not root.exists():
                 continue
-            files.extend(
-                path for path in root.rglob("*") if path.is_file() and not path.is_symlink()
-            )
+            files.extend(path for path in root.rglob("*") if path.is_file() and not path.is_symlink())
         return tuple(sorted(set(path.resolve() for path in files)))
 
     def _vault_name(self, path: Path) -> str:
         """Encode an ANU_HOME-relative path into a reversible OCI-compatible secret name."""
 
         relative = path.expanduser().resolve().relative_to(self.topology.settings.home.resolve())
-        encoded = (
-            base64.b32encode(str(relative).encode("utf-8"))
-            .decode("ascii")
-            .rstrip("=")
-            .lower()
-        )
+        encoded = base64.b32encode(str(relative).encode("utf-8")).decode("ascii").rstrip("=").lower()
         return self._FILE_SECRET_PREFIX + encoded
 
     def _decode_relative_path(self, name: str) -> Path:
@@ -187,6 +190,7 @@ class OciSecurityPersistenceService(SecurityPersistenceService):
     def _atomic_write(path: Path, payload: bytes, *, mode: int) -> None:
         """Atomically replace one durable/runtime security file with restrictive permissions."""
 
+        path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
         try:
             temporary.write_bytes(payload)

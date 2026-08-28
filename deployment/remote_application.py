@@ -216,7 +216,7 @@ class OciRemoteApplicationInstaller:
             "ANU_OCI_VAULT_KEY_OCID": self._configuration.vault_key_ocid,
             "ANU_OCI_AUTH_MODE": "instance_principal",
             "ANU_OCI_SECRET_PREFIX": "anu",
-            "ANU_MASKER_KEY_FILE": "/run/agent-nebula/masker-key",
+            "DEPLOY_SECURITY_STAGING_ROOT": "/run/agent-nebula-security-staging",
         }
         content = "\n".join(f"{key}={shlex.quote(value)}" for key, value in values.items()) + "\n"
         encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")

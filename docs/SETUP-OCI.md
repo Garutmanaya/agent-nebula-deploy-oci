@@ -56,7 +56,6 @@ Ephemeral plaintext runtime material:
 
 ```text
 /run/agent-nebula/
-├── masker-key                        OCI runtime-only cache encryption key
 ├── nebula/
 ├── database/
 ├── explorer/

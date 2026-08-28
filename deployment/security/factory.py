@@ -36,11 +36,11 @@ def build_security_persistence_service(
         auth_mode=values.get("ANU_OCI_AUTH_MODE", "instance_principal"),
         secret_prefix=values.get("ANU_OCI_SECRET_PREFIX", "anu"),
     )
-    masker_key_file = Path(
-        values.get("ANU_MASKER_KEY_FILE", "/run/agent-nebula/masker-key")
+    staging_root = Path(
+        values.get("DEPLOY_SECURITY_STAGING_ROOT", "/run/agent-nebula-security-staging")
     )
     return OciSecurityPersistenceService(
         topology=topology,
         vault=OciVaultSecretClient(configuration),
-        masker_key_file=masker_key_file,
+        staging_root=staging_root,
     )
