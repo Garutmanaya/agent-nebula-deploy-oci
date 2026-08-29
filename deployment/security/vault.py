@@ -32,7 +32,13 @@ class SubprocessCommandRunner:
     def run(self, argv: tuple[str, ...]) -> str:
         """Run one OCI CLI command and return UTF-8 stdout."""
 
-        completed = subprocess.run(argv, check=True, capture_output=True, text=True)
+        completed = subprocess.run(argv, check=False, capture_output=True, text=True)
+        if completed.returncode != 0:
+            detail = completed.stderr.strip() or completed.stdout.strip()
+            message = f"OCI CLI command failed with exit status {completed.returncode}"
+            if detail:
+                message = f"{message}: {detail}"
+            raise RuntimeError(message)
         return completed.stdout
 
 
@@ -96,8 +102,10 @@ class OciVaultSecretClient:
                     "vaultId": self._configuration.vault_ocid,
                     "keyId": self._configuration.key_ocid,
                     "secretContentContent": content,
-                    "secretContentName": "agent-nebula",
                     "secretContentStage": "CURRENT",
+                    "waitForState": ["ACTIVE"],
+                    "maxWaitSeconds": 300,
+                    "waitIntervalSeconds": 2,
                 },
             )
             return
@@ -106,8 +114,10 @@ class OciVaultSecretClient:
             {
                 "secretId": secret_id,
                 "secretContentContent": content,
-                "secretContentName": "agent-nebula",
                 "secretContentStage": "CURRENT",
+                "waitForState": ["ACTIVE"],
+                "maxWaitSeconds": 300,
+                "waitIntervalSeconds": 2,
             },
         )
 
@@ -153,7 +163,7 @@ class OciVaultSecretClient:
                 "--all",
             )
         )
-        payload = json.loads(output)
+        payload = self._parse_list_response(output)
         prefix = f"{self._configuration.secret_prefix}-"
         names = []
         for item in payload.get("data", []):
@@ -179,14 +189,28 @@ class OciVaultSecretClient:
                 "--all",
             )
         )
-        payload = json.loads(output)
+        payload = self._parse_list_response(output)
         for item in payload.get("data", []):
             item_name = item.get("secret-name") or item.get("name")
             if item_name == name:
                 return item.get("id")
         return None
 
-    def _run_sensitive_json(self, command: tuple[str, ...], payload: dict[str, str]) -> None:
+    @staticmethod
+    def _parse_list_response(output: str) -> dict[str, object]:
+        """Parse OCI list output, treating successful empty stdout as an empty result set."""
+
+        stripped = output.strip()
+        if not stripped:
+            return {"data": []}
+        payload = json.loads(stripped)
+        if not isinstance(payload, dict):
+            raise ValueError("OCI Vault list response must be a JSON object")
+        return payload
+
+    def _run_sensitive_json(
+        self, command: tuple[str, ...], payload: dict[str, object]
+    ) -> None:
         """Pass secret content through a private tmpfs JSON file, never process arguments."""
 
         runtime_root = Path(os.environ.get("ANU_RUNTIME_HOME", "/run/agent-nebula"))

@@ -107,3 +107,25 @@ def test_prepare_for_deployment_materializes_plaintext_only_to_staging(tmp_path:
     assert staged.read_bytes() == b"oauth-database-secret"
     assert AesGcmFileCipher.is_encrypted_bytes(secret.read_bytes())
     assert not (tmp_path / "run" / "masker-key").exists()
+
+
+def test_prepare_for_deployment_preserves_staging_root_and_clears_stale_content(
+    tmp_path: Path,
+) -> None:
+    """A bind-mounted staging root must survive refresh while stale children are removed."""
+
+    service, _ = _service(tmp_path)
+    staging_root = service.staging_root
+    staging_root.mkdir(parents=True)
+    stale_directory = staging_root / "stale"
+    stale_directory.mkdir()
+    (stale_directory / "old-secret").write_bytes(b"stale")
+    stale_file = staging_root / "old-file"
+    stale_file.write_bytes(b"stale")
+
+    service._prepare_staging_root()
+
+    assert staging_root.exists()
+    assert staging_root.is_dir()
+    assert list(staging_root.iterdir()) == []
+    assert staging_root.stat().st_mode & 0o777 == 0o700

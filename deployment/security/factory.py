@@ -28,7 +28,12 @@ def build_security_persistence_service(
 
     if target is DeploymentTarget.LOCAL:
         return None
-    values = os.environ if environment is None else environment
+    # OCI Vault identifiers/authentication belong to the installer process environment.
+    # Product environment files intentionally contain only application/runtime settings, so
+    # overlay them on top of the process environment rather than replacing it.
+    values = dict(os.environ)
+    if environment is not None:
+        values.update(environment)
     configuration = OciVaultConfiguration(
         compartment_ocid=values.get("ANU_OCI_COMPARTMENT_OCID", ""),
         vault_ocid=values.get("ANU_OCI_VAULT_OCID", ""),

@@ -106,12 +106,16 @@ class OciSecurityPersistenceService(SecurityPersistenceService):
         return AesGcmFileCipher(key)
 
     def _prepare_staging_root(self) -> None:
-        """Recreate the plaintext staging root so stale security files cannot survive deployment."""
+        """Clear stale plaintext staging content without removing the bind-mounted root."""
 
         root = self.staging_root.expanduser().resolve()
-        if root.exists():
-            shutil.rmtree(root)
-        root.mkdir(parents=True, mode=0o700)
+        root.mkdir(parents=True, mode=0o700, exist_ok=True)
+        for child in root.iterdir():
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink(missing_ok=True)
+        root.chmod(0o700)
 
     def _restore_from_vault(self, cipher: AesGcmFileCipher) -> None:
         """Recreate encrypted local cache files from Vault on a fresh or rebuilt VM."""
