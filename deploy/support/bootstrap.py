@@ -449,19 +449,26 @@ class NebulaBootstrapService:
             key.chmod(0o600)
 
     def _issue_transport_identities(self, *, force: bool, component: str | None) -> None:
-        """Issue local TLS identities for all components or the selected component only."""
+        """Issue TLS identities using stable public names plus existing local/internal SANs."""
 
         api_host = self._url_hostname(self._core_settings.public_api_url, "Core public API URL")
         ui_host = self._url_hostname(self._core_settings.public_ui_url, "Core public UI URL")
-        explorer_host = ui_host
         postgres_host = self._core_settings.database_host
         identities = {
-            "core": (self._topology.core, api_host, ("nebula-core", api_host, ui_host)),
-            "console": (self._topology.console, ui_host, ("nebula-console", ui_host)),
+            "core": (
+                self._topology.core,
+                "registry.agentnebula.ai",
+                ("nebula-core", api_host, ui_host, "registry.agentnebula.ai"),
+            ),
+            "console": (
+                self._topology.console,
+                "agentnebula.ai",
+                ("nebula-console", ui_host, "agentnebula.ai"),
+            ),
             "explorer": (
                 self._topology.explorer,
-                explorer_host,
-                ("nebula-explorer", explorer_host),
+                "explorer.agentnebula.ai",
+                ("nebula-explorer", ui_host, "explorer.agentnebula.ai"),
             ),
             "database": (
                 self._topology.database,
@@ -532,16 +539,25 @@ class OAuthBootstrapService:
         profile = self._settings.deployment_profile.lower()
         tls_enabled = self._oauth.tls_enabled and profile not in {"cloudrun", "aws"}
         security = DeploymentSecurityPaths(directory)
-        hostname = urlparse(self._oauth.public_url).hostname
-        if not hostname:
+        public_hostname = "oauth.agentnebula.ai"
+        configured_hostname = urlparse(self._oauth.public_url).hostname
+        service_hostname = urlparse(self._oauth.service_url).hostname
+        if not configured_hostname:
             raise ValueError(f"OAuth public URL has no hostname: {self._oauth.public_url}")
+        if not service_hostname:
+            raise ValueError(f"OAuth service URL has no hostname: {self._oauth.service_url}")
 
         if tls_enabled:
             self._pki.ensure_ca(force=False)
             self._pki.ensure_server_identity(
                 directory=directory,
-                common_name=hostname,
-                dns_names=("nebula-oauth", hostname),
+                common_name=public_hostname,
+                dns_names=(
+                    "nebula-oauth",
+                    configured_hostname,
+                    service_hostname,
+                    public_hostname,
+                ),
                 force=force_pki,
             )
 
@@ -625,13 +641,14 @@ class PolicyBootstrapService:
         security = DeploymentSecurityPaths(directory)
         if tls_enabled:
             self._pki.ensure_ca(force=False)
-            hostname = urlparse(self._policy.service_url).hostname
-            if not hostname:
+            public_hostname = "policy.agentnebula.ai"
+            service_hostname = urlparse(self._policy.service_url).hostname
+            if not service_hostname:
                 raise ValueError(f"Policy service URL has no hostname: {self._policy.service_url}")
             self._pki.ensure_server_identity(
                 directory=directory,
-                common_name=hostname,
-                dns_names=("nebula-policy", hostname),
+                common_name=public_hostname,
+                dns_names=("nebula-policy", service_hostname, public_hostname),
                 force=force_pki,
             )
 
@@ -725,8 +742,9 @@ class PlaygroundBootstrapService:
 
         force_pki = force_scope in {InitializationForceScope.PKI, InitializationForceScope.ALL}
         self._pki.ensure_ca(force=False)
-        hostname = urlparse(self._playground_settings.public_url).hostname
-        if not hostname:
+        public_hostname = "playground.agentnebula.ai"
+        configured_hostname = urlparse(self._playground_settings.public_url).hostname
+        if not configured_hostname:
             raise ValueError(
                 "Playground public URL has no hostname: "
                 f"{self._playground_settings.public_url}"
@@ -736,8 +754,12 @@ class PlaygroundBootstrapService:
             directory = getattr(self._topology, name)
             self._pki.ensure_server_identity(
                 directory=directory,
-                common_name=hostname,
-                dns_names=(f"playground-{name}", hostname),
+                common_name=public_hostname,
+                dns_names=(
+                    f"playground-{name}",
+                    configured_hostname,
+                    public_hostname,
+                ),
                 force=force_pki,
             )
         return True
