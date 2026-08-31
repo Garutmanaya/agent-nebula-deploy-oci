@@ -78,10 +78,21 @@ class DeploymentEnvironmentService:
         *,
         product: str,
         profile: str,
+        preserve_existing: bool = False,
     ) -> DeploymentEnvironmentFile:
-        """Regenerate one canonical environment file for a product/profile pair."""
+        """Generate one canonical environment file for a product/profile pair.
+
+        Component-scoped initialization may set ``preserve_existing`` so it consumes the
+        established product contract instead of rewriting operator-managed values.
+        """
 
         self._validate_selection(product=product, profile=profile)
+        destination = self._path(product=product, profile=profile)
+        if preserve_existing and destination.is_file():
+            return DeploymentEnvironmentFile(
+                path=destination,
+                values=self._files.load(destination),
+            )
         values = self._common_values(profile)
         values.update(self._image_values(product))
         values.update(self._profile_values(profile))
@@ -96,7 +107,6 @@ class DeploymentEnvironmentService:
         else:
             values.update(self._studio_values(profile))
 
-        destination = self._path(product=product, profile=profile)
         self._files.write_sections(destination, self._categorized_sections(values))
         return DeploymentEnvironmentFile(path=destination, values=values)
 
@@ -362,12 +372,15 @@ class DeploymentEnvironmentService:
 
         hostname = self._effective_hostname(profile)
         oauth_public_url = self._oauth_public_url(profile, hostname)
+        oauth_service_url = f"https://{hostname}:{AgentNebulaPorts.OAUTH}"
         if profile == "cloudflare":
             ui_url = "https://agentnebula.ai"
-            api_url = "https://api.agentnebula.ai"
-            explorer_url = "https://explorer.agentnebula.ai"
-            playground_backend_url = "https://pending-playground-backend.invalid"
-            database_host = "localhost"
+            api_url = "https://registry.agentnebula.ai"
+            explorer_url = f"https://{hostname}:{AgentNebulaPorts.EXPLORER}"
+            playground_backend_url = (
+                f"http://{hostname}:{PlaygroundEnvironment.BACKEND_PORT.default}"
+            )
+            database_host = hostname
         elif profile == "cloudrun":
             ui_url = "https://pending-ui.invalid"
             api_url = "https://pending-api.invalid"
@@ -398,13 +411,17 @@ class DeploymentEnvironmentService:
         environment = dict(base_values)
         environment.update(
             {
-                InfrastructureEnvironment.NEBULA_URL.name: api_url,
+                InfrastructureEnvironment.NEBULA_URL.name: (
+                    f"https://{hostname}:{CoreEnvironment.PORT.default}"
+                    if profile == "cloudflare"
+                    else api_url
+                ),
                 CoreEnvironment.PUBLIC_UI_URL.name: ui_url,
                 CoreEnvironment.PUBLIC_API_URL.name: api_url,
                 CoreEnvironment.DATABASE_HOST.name: database_host,
                 CoreEnvironment.HEALTH_EXPLORER_URL.name: explorer_health_url,
                 CoreEnvironment.HEALTH_PLAYGROUND_URL.name: playground_health_url,
-                OAuthEnvironment.SERVICE_URL.name: oauth_public_url,
+                OAuthEnvironment.SERVICE_URL.name: oauth_service_url,
                 OAuthEnvironment.PUBLIC_URL.name: oauth_public_url,
                 PolicyEnvironment.SERVICE_URL.name: (
                     f"https://{hostname}:{PolicyEnvironment.PORT.default}"
@@ -471,7 +488,7 @@ class DeploymentEnvironmentService:
         overrides = dict(base_values)
         public_url = self._oauth_public_url(profile, hostname)
         if profile == "cloudflare":
-            registry_url = "https://api.agentnebula.ai"
+            registry_url = f"https://{hostname}:{CoreEnvironment.PORT.default}"
         elif profile == "cloudrun":
             registry_url = "https://pending-api.invalid"
         else:
@@ -487,7 +504,9 @@ class DeploymentEnvironmentService:
         overrides.update(
             {
                 InfrastructureEnvironment.NEBULA_URL.name: registry_url,
-                OAuthEnvironment.SERVICE_URL.name: public_url,
+                OAuthEnvironment.SERVICE_URL.name: (
+                    f"https://{hostname}:{AgentNebulaPorts.OAUTH}"
+                ),
                 OAuthEnvironment.PUBLIC_URL.name: public_url,
                 OAuthEnvironment.ISSUER.name: public_url,
                 OAuthEnvironment.HOST.name: "0.0.0.0",

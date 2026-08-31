@@ -164,7 +164,11 @@ class HostDeploymentService:
     ) -> bool:
         """Refresh config and initialize the selected durable resource scope safely."""
 
-        generated = self._environments.generate(product=product, profile=profile)
+        generated = self._environments.generate(
+            product=product,
+            profile=profile,
+            preserve_existing=component is not None,
+        )
         topology = AgentNebulaDeploymentTopology.from_environment(generated.values)
         security = build_security_persistence_service(
             target=self._target,
