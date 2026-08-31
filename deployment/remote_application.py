@@ -19,6 +19,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from agent_nebula_utils.environment.definitions import (
+    InfrastructureEnvironment,
+    OciDeploymentEnvironment,
+)
+
 
 class CommandRunner(Protocol):
     """Execute local commands and optionally provide stdin to the child process."""
@@ -209,13 +214,15 @@ class OciRemoteApplicationInstaller:
         """Persist only non-secret OCI identifiers required by Vault-backed initialization."""
 
         values = {
-            "ANU_HOME": "/opt/agent-nebula",
-            "ANU_RUNTIME_HOME": "/run/agent-nebula",
-            "ANU_OCI_COMPARTMENT_OCID": self._configuration.compartment_ocid,
-            "ANU_OCI_VAULT_OCID": self._configuration.vault_ocid,
-            "ANU_OCI_VAULT_KEY_OCID": self._configuration.vault_key_ocid,
-            "ANU_OCI_AUTH_MODE": "instance_principal",
-            "ANU_OCI_SECRET_PREFIX": "anu",
+            InfrastructureEnvironment.HOME.name: "/opt/agent-nebula",
+            InfrastructureEnvironment.RUNTIME_HOME.name: "/run/agent-nebula",
+            OciDeploymentEnvironment.COMPARTMENT_OCID.name: self._configuration.compartment_ocid,
+            OciDeploymentEnvironment.VAULT_OCID.name: self._configuration.vault_ocid,
+            OciDeploymentEnvironment.VAULT_KEY_OCID.name: self._configuration.vault_key_ocid,
+            OciDeploymentEnvironment.AUTH_MODE.name: OciDeploymentEnvironment.AUTH_MODE.default,
+            OciDeploymentEnvironment.SECRET_PREFIX.name: (
+                OciDeploymentEnvironment.SECRET_PREFIX.default
+            ),
             "DEPLOY_SECURITY_STAGING_ROOT": "/run/agent-nebula-security-staging",
         }
         content = "\n".join(f"{key}={shlex.quote(value)}" for key, value in values.items()) + "\n"

@@ -11,6 +11,8 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
+from agent_nebula_utils.environment.definitions import OciDeploymentEnvironment
+
 from deployment.targets import DeploymentTarget
 from deployment.topology import AgentNebulaDeploymentTopology
 
@@ -35,11 +37,17 @@ def build_security_persistence_service(
     if environment is not None:
         values.update(environment)
     configuration = OciVaultConfiguration(
-        compartment_ocid=values.get("ANU_OCI_COMPARTMENT_OCID", ""),
-        vault_ocid=values.get("ANU_OCI_VAULT_OCID", ""),
-        key_ocid=values.get("ANU_OCI_VAULT_KEY_OCID", ""),
-        auth_mode=values.get("ANU_OCI_AUTH_MODE", "instance_principal"),
-        secret_prefix=values.get("ANU_OCI_SECRET_PREFIX", "anu"),
+        compartment_ocid=values.get(OciDeploymentEnvironment.COMPARTMENT_OCID.name, ""),
+        vault_ocid=values.get(OciDeploymentEnvironment.VAULT_OCID.name, ""),
+        key_ocid=values.get(OciDeploymentEnvironment.VAULT_KEY_OCID.name, ""),
+        auth_mode=values.get(
+            OciDeploymentEnvironment.AUTH_MODE.name,
+            OciDeploymentEnvironment.AUTH_MODE.default,
+        ),
+        secret_prefix=values.get(
+            OciDeploymentEnvironment.SECRET_PREFIX.name,
+            OciDeploymentEnvironment.SECRET_PREFIX.default,
+        ),
     )
     staging_root = Path(
         values.get("DEPLOY_SECURITY_STAGING_ROOT", "/run/agent-nebula-security-staging")
