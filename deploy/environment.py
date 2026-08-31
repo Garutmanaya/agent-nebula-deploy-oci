@@ -2,8 +2,7 @@
 
 Utils owns every ``ANU_*`` name, default, parser, and primitive resolver. Deploy owns only the
 product/profile composition that decides which already-defined values belong in a concrete profile
-file. Each profile/product receives an isolated file so local, Cloudflare, and Cloud Run settings do
-not leak into one another.
+file. Each profile/product receives an isolated file so private-host and optional Cloudflare public-interface settings do not leak into one another.
 """
 
 from __future__ import annotations
@@ -38,7 +37,6 @@ from agent_nebula_utils.environment.definitions import (
     OAuthEnvironment,
     PlaygroundEnvironment,
     PolicyEnvironment,
-    StudioEnvironment,
 )
 
 
@@ -53,8 +51,8 @@ class DeploymentEnvironmentFile:
 class DeploymentEnvironmentService:
     """Generate isolated profile/product environment files from Utils-owned definitions."""
 
-    _PRODUCTS = frozenset({"nebula", "oauth", "playground", "policy", "studio"})
-    _PROFILES = frozenset({"local", "cloudflare", "cloudrun"})
+    _PRODUCTS = frozenset({"nebula", "oauth", "playground", "policy"})
+    _PROFILES = frozenset({"local", "cloudflare"})
 
     def __init__(
         self,
@@ -95,8 +93,8 @@ class DeploymentEnvironmentService:
             )
         values = self._common_values(profile)
         values.update(self._image_values(product))
-        values.update(self._profile_values(profile))
         if product == "nebula":
+            values.update(self._profile_values(profile))
             values.update(self._nebula_values(profile, values))
         elif product == "oauth":
             values.update(self._oauth_values(profile, values))
@@ -104,8 +102,6 @@ class DeploymentEnvironmentService:
             values.update(self._playground_values(profile, values))
         elif product == "policy":
             values.update(self._policy_values(profile, values))
-        else:
-            values.update(self._studio_values(profile))
 
         self._files.write_sections(destination, self._categorized_sections(values))
         return DeploymentEnvironmentFile(path=destination, values=values)
@@ -154,7 +150,7 @@ class DeploymentEnvironmentService:
             ),
             "DEPLOY_SECURITY_STAGING_ROOT": "/run/agent-nebula-security-staging",
             InfrastructureEnvironment.DEPLOYMENT_PROFILE.name: profile,
-            InfrastructureEnvironment.RUNTIME_MODE.name: profile,
+            InfrastructureEnvironment.RUNTIME_MODE.name: "local",
             DeploymentEnvironment.CONTAINER_UID.name: str(self._deployment.container_uid),
             DeploymentEnvironment.CONTAINER_GID.name: str(self._deployment.container_gid),
             DeploymentEnvironment.IMAGE_SOURCE.name: self._target.image_source,
@@ -210,13 +206,11 @@ class DeploymentEnvironmentService:
             return {DeploymentEnvironment.OAUTH_IMAGE.name: references["oauth"]}
         if product == "policy":
             return {DeploymentEnvironment.POLICY_IMAGE.name: references["policy"]}
-        if product == "studio":
-            return {DeploymentEnvironment.STUDIO_IMAGE.name: self._deployment.studio_image}
         return {}
 
     @staticmethod
     def _categorized_sections(values: Mapping[str, str]) -> dict[str, dict[str, str]]:
-        """Group generated values for readable operator-owned environment files."""
+        """Group generated values using canonical Utils ownership rather than raw prefixes."""
 
         sections: dict[str, dict[str, str]] = {
             "Deployment": {},
@@ -230,53 +224,72 @@ class DeploymentEnvironmentService:
             "Policy": {},
             "Playground": {},
             "Cloudflare": {},
-            "Cloud Run / GCP": {},
             "Integration": {},
             "Other": {},
         }
-        filesystem_names = {
-            "ANU_HOME", "ANU_RUNTIME_HOME", "ANU_SECURITY_INPUT_ROOT",
-            "DEPLOY_SECURITY_SOURCE_ROOT", "DEPLOY_SECURITY_STAGING_ROOT",
-            "ANU_CONFIG_DIR", "ANU_SECRETS_DIR", "ANU_CERTS_DIR",
-            "ANU_DATA_DIR", "ANU_LOGS_DIR", "ANU_TMP_DIR", "ANU_PKI_DIR",
-            "ANU_APPLICATION_CONFIG_FILENAME", "ANU_ONBOARDING_API_KEY_FILENAME",
-            "ANU_OAUTH_AUTH_KEY_FILENAME", "ANU_OAUTH_DPOP_KEY_FILENAME",
-            "ANU_TLS_CERT_FILENAME", "ANU_TLS_KEY_FILENAME",
-            "ANU_ROOT_CA_FILENAME", "ANU_TRUST_BUNDLE_FILENAME",
+        filesystem_names = {definition.name for definition in FilesystemEnvironment.definitions()} | {
+            InfrastructureEnvironment.HOME.name,
+            InfrastructureEnvironment.RUNTIME_HOME.name,
+            InfrastructureEnvironment.SECURITY_INPUT_ROOT.name,
         }
         deployment_names = {
-            "ANU_DEPLOYMENT_PROFILE", "ANU_RUNTIME_MODE",
-            "ANU_CONTAINER_UID", "ANU_CONTAINER_GID",
-            "ANU_DEPLOY_IMAGE_SOURCE", "ANU_DEPLOY_LOCAL_HOSTNAME",
-            "ANU_DEPLOY_PUBLIC_UI_HOST", "ANU_DEPLOY_PUBLIC_API_HOST",
-            "ANU_DEPLOY_PUBLIC_EXPLORER_HOST",
+            InfrastructureEnvironment.DEPLOYMENT_PROFILE.name,
+            InfrastructureEnvironment.RUNTIME_MODE.name,
+            DeploymentEnvironment.CONTAINER_UID.name,
+            DeploymentEnvironment.CONTAINER_GID.name,
+            DeploymentEnvironment.IMAGE_SOURCE.name,
+            DeploymentEnvironment.LOCAL_HOSTNAME.name,
+        }
+        image_names = {
+            DeploymentEnvironment.CORE_IMAGE.name,
+            DeploymentEnvironment.CONSOLE_IMAGE.name,
+            DeploymentEnvironment.EXPLORER_IMAGE.name,
+            DeploymentEnvironment.MIGRATION_IMAGE.name,
+            DeploymentEnvironment.POSTGRES_IMAGE.name,
+            DeploymentEnvironment.OAUTH_IMAGE.name,
+            DeploymentEnvironment.POLICY_IMAGE.name,
+        }
+        core_names = {definition.name for definition in CoreEnvironment.definitions()}
+        console_names = {definition.name for definition in ConsoleEnvironment.definitions()}
+        explorer_names = {definition.name for definition in ExplorerEnvironment.definitions()}
+        oauth_names = {definition.name for definition in OAuthEnvironment.definitions()}
+        policy_names = {definition.name for definition in PolicyEnvironment.definitions()}
+        playground_names = {definition.name for definition in PlaygroundEnvironment.definitions()}
+        cloudflare_names = {
+            DeploymentEnvironment.CLOUDFLARE_TUNNEL_NAME.name,
+            DeploymentEnvironment.CLOUDFLARE_TUNNEL_ID.name,
+            DeploymentEnvironment.CLOUDFLARE_CREDENTIALS_SOURCE.name,
+            DeploymentEnvironment.CLOUDFLARE_SERVICE_USER.name,
+            DeploymentEnvironment.CLOUDFLARE_SERVICE_GROUP.name,
+            DeploymentEnvironment.CLOUDFLARE_FRONTEND_ORIGIN_URL.name,
+            DeploymentEnvironment.CLOUDFLARE_BACKEND_ORIGIN_URL.name,
+            DeploymentEnvironment.CLOUDFLARE_ORIGIN_SERVER_NAME.name,
         }
         for name, value in values.items():
-            if name.endswith("_IMAGE"):
+            if name in image_names:
                 section = "Images"
-            elif name in filesystem_names:
+            elif name in filesystem_names or name in {
+                "DEPLOY_SECURITY_SOURCE_ROOT",
+                "DEPLOY_SECURITY_STAGING_ROOT",
+            }:
                 section = "Filesystem & Runtime"
             elif name in deployment_names:
                 section = "Deployment"
-            elif "_DATABASE_" in name:
-                section = "Database"
-            elif name.startswith("ANU_CORE_"):
-                section = "Core"
-            elif name.startswith("ANU_CONSOLE_"):
+            elif name in core_names:
+                section = "Database" if "DATABASE" in name else "Core"
+            elif name in console_names:
                 section = "Console"
-            elif name.startswith("ANU_EXPLORER_"):
+            elif name in explorer_names:
                 section = "Explorer"
-            elif name.startswith("ANU_OAUTH_"):
-                section = "OAuth"
-            elif name.startswith("ANU_POLICY_"):
+            elif name in oauth_names:
+                section = "Database" if "DATABASE" in name else "OAuth"
+            elif name in policy_names:
                 section = "Policy"
-            elif name.startswith("ANU_PLAYGROUND_"):
+            elif name in playground_names:
                 section = "Playground"
-            elif name.startswith("ANU_DEPLOY_CLOUDFLARE_"):
+            elif name in cloudflare_names:
                 section = "Cloudflare"
-            elif name.startswith(("ANU_DEPLOY_GCP_", "ANU_DEPLOY_CLOUDRUN_")):
-                section = "Cloud Run / GCP"
-            elif name in {"ANU_NEBULA_URL"}:
+            elif name == InfrastructureEnvironment.NEBULA_URL.name:
                 section = "Integration"
             else:
                 section = "Other"
@@ -284,77 +297,34 @@ class DeploymentEnvironmentService:
         return sections
 
     def _profile_values(self, profile: str) -> dict[str, str]:
-        """Return only variables relevant to the selected deployment profile."""
+        """Return optional Cloudflare tunnel settings for the public-interface profile."""
 
         if profile == "local":
             return {}
-        if profile == "cloudflare":
-            return {
-                DeploymentEnvironment.CLOUDFLARE_TUNNEL_NAME.name: (
-                    self._deployment.cloudflare_tunnel_name
-                ),
-                DeploymentEnvironment.CLOUDFLARE_TUNNEL_ID.name: (
-                    self._deployment.cloudflare_tunnel_id
-                ),
-                DeploymentEnvironment.CLOUDFLARE_CREDENTIALS_SOURCE.name: (
-                    self._deployment.cloudflare_credentials_source
-                ),
-                DeploymentEnvironment.CLOUDFLARE_SERVICE_USER.name: (
-                    self._deployment.cloudflare_service_user
-                ),
-                DeploymentEnvironment.CLOUDFLARE_SERVICE_GROUP.name: (
-                    self._deployment.cloudflare_service_group
-                ),
-                DeploymentEnvironment.CLOUDFLARE_FRONTEND_ORIGIN_URL.name: (
-                    self._deployment.cloudflare_frontend_origin_url
-                ),
-                DeploymentEnvironment.CLOUDFLARE_BACKEND_ORIGIN_URL.name: (
-                    self._deployment.cloudflare_backend_origin_url
-                ),
-                DeploymentEnvironment.CLOUDFLARE_EXPLORER_ORIGIN_URL.name: (
-                    self._deployment.cloudflare_explorer_origin_url
-                ),
-                DeploymentEnvironment.CLOUDFLARE_ORIGIN_SERVER_NAME.name: (
-                    self._deployment.cloudflare_origin_server_name
-                ),
-            }
         return {
-            DeploymentEnvironment.GCP_PROJECT.name: self._deployment.gcp_project,
-            DeploymentEnvironment.GCP_REGION.name: self._deployment.gcp_region,
-            DeploymentEnvironment.GCP_ENVIRONMENT.name: self._deployment.gcp_environment,
-            DeploymentEnvironment.GCP_ARTIFACT_REPOSITORY.name: (
-                self._deployment.gcp_artifact_repository
+            DeploymentEnvironment.CLOUDFLARE_TUNNEL_NAME.name: (
+                self._deployment.cloudflare_tunnel_name
             ),
-            DeploymentEnvironment.GCP_CLOUD_SQL_TIER.name: self._deployment.gcp_cloud_sql_tier,
-            DeploymentEnvironment.GCP_DATABASE_DELETION_PROTECTION.name: str(
-                self._deployment.gcp_database_deletion_protection
-            ).lower(),
-            DeploymentEnvironment.GCP_CORE_MIN_INSTANCES.name: str(
-                self._deployment.gcp_core_min_instances
+            DeploymentEnvironment.CLOUDFLARE_TUNNEL_ID.name: (
+                self._deployment.cloudflare_tunnel_id
             ),
-            DeploymentEnvironment.GCP_CORE_MAX_INSTANCES.name: str(
-                self._deployment.gcp_core_max_instances
+            DeploymentEnvironment.CLOUDFLARE_CREDENTIALS_SOURCE.name: (
+                self._deployment.cloudflare_credentials_source
             ),
-            DeploymentEnvironment.GCP_CONSOLE_MIN_INSTANCES.name: str(
-                self._deployment.gcp_console_min_instances
+            DeploymentEnvironment.CLOUDFLARE_SERVICE_USER.name: (
+                self._deployment.cloudflare_service_user
             ),
-            DeploymentEnvironment.GCP_CONSOLE_MAX_INSTANCES.name: str(
-                self._deployment.gcp_console_max_instances
+            DeploymentEnvironment.CLOUDFLARE_SERVICE_GROUP.name: (
+                self._deployment.cloudflare_service_group
             ),
-            DeploymentEnvironment.CLOUDRUN_CORE_SERVICE.name: (
-                self._deployment.cloudrun_core_service
+            DeploymentEnvironment.CLOUDFLARE_FRONTEND_ORIGIN_URL.name: (
+                self._deployment.cloudflare_frontend_origin_url
             ),
-            DeploymentEnvironment.CLOUDRUN_CONSOLE_SERVICE.name: (
-                self._deployment.cloudrun_console_service
+            DeploymentEnvironment.CLOUDFLARE_BACKEND_ORIGIN_URL.name: (
+                self._deployment.cloudflare_backend_origin_url
             ),
-            DeploymentEnvironment.CLOUDRUN_EXPLORER_SERVICE.name: (
-                self._deployment.cloudrun_explorer_service
-            ),
-            DeploymentEnvironment.CLOUDRUN_STUDIO_SERVICE.name: (
-                self._deployment.cloudrun_studio_service
-            ),
-            DeploymentEnvironment.CLOUDRUN_MIGRATION_JOB.name: (
-                self._deployment.cloudrun_migration_job
+            DeploymentEnvironment.CLOUDFLARE_ORIGIN_SERVER_NAME.name: (
+                self._deployment.cloudflare_origin_server_name
             ),
         }
 
@@ -381,12 +351,6 @@ class DeploymentEnvironmentService:
                 f"http://{hostname}:{PlaygroundEnvironment.BACKEND_PORT.default}"
             )
             database_host = hostname
-        elif profile == "cloudrun":
-            ui_url = "https://pending-ui.invalid"
-            api_url = "https://pending-api.invalid"
-            explorer_url = "https://pending-explorer.invalid"
-            playground_backend_url = "https://pending-playground-backend.invalid"
-            database_host = "cloudsql"
         else:
             ui_url = f"https://{hostname}:{ConsoleEnvironment.PORT.default}"
             api_url = f"https://{hostname}:{CoreEnvironment.PORT.default}"
@@ -396,17 +360,12 @@ class DeploymentEnvironmentService:
             )
             database_host = hostname
 
-        # Core health probes use backend-reachable topology rather than browser-facing URLs.
-        # Local and Cloudflare profiles share the host network; Cloud Run uses the deployed
-        # Explorer URL and leaves Playground unknown until a backend service is configured.
-        if profile == "cloudrun":
-            explorer_health_url = explorer_url
-            playground_health_url = ""
-        else:
-            explorer_health_url = f"https://{hostname}:{AgentNebulaPorts.EXPLORER}"
-            playground_health_url = (
-                f"http://{hostname}:{PlaygroundEnvironment.BACKEND_PORT.default}"
-            )
+        # Health dependencies always use backend-reachable host topology. Public Cloudflare
+        # identities are browser/client-facing only and do not alter service-to-service routing.
+        explorer_health_url = f"https://{hostname}:{AgentNebulaPorts.EXPLORER}"
+        playground_health_url = (
+            f"http://{hostname}:{PlaygroundEnvironment.BACKEND_PORT.default}"
+        )
 
         environment = dict(base_values)
         environment.update(
@@ -453,15 +412,6 @@ class DeploymentEnvironmentService:
             OAuthEnvironment.SERVICE_URL.name: environment[OAuthEnvironment.SERVICE_URL.name],
             OAuthEnvironment.PUBLIC_URL.name: environment[OAuthEnvironment.PUBLIC_URL.name],
             PolicyEnvironment.SERVICE_URL.name: environment[PolicyEnvironment.SERVICE_URL.name],
-            DeploymentEnvironment.PUBLIC_UI_HOST.name: (
-                ui_url.split("//", 1)[-1].split(":", 1)[0]
-            ),
-            DeploymentEnvironment.PUBLIC_API_HOST.name: (
-                api_url.split("//", 1)[-1].split(":", 1)[0]
-            ),
-            DeploymentEnvironment.PUBLIC_EXPLORER_HOST.name: (
-                explorer_url.split("//", 1)[-1].split(":", 1)[0]
-            ),
         }
         values.update(anu_load_core_settings(environment).environment_values())
         values.update(anu_load_console_settings(environment).environment_values())
@@ -469,12 +419,16 @@ class DeploymentEnvironmentService:
         return values
 
     def _oauth_public_url(self, profile: str, hostname: str) -> str:
-        """Return the canonical browser/client-facing Authorization Server URL."""
+        """Return the browser/client-facing Authorization Server identity."""
 
         if profile == "cloudflare":
             return "https://oauth.agentnebula.ai"
-        if profile == "cloudrun":
-            return "https://pending-oauth.invalid"
+        return self._oauth_service_url(hostname)
+
+    @staticmethod
+    def _oauth_service_url(hostname: str) -> str:
+        """Return the backend-reachable OAuth endpoint used by platform services."""
+
         return f"https://{hostname}:{AgentNebulaPorts.OAUTH}"
 
     def _oauth_values(
@@ -487,12 +441,7 @@ class DeploymentEnvironmentService:
         hostname = self._effective_hostname(profile)
         overrides = dict(base_values)
         public_url = self._oauth_public_url(profile, hostname)
-        if profile == "cloudflare":
-            registry_url = f"https://{hostname}:{CoreEnvironment.PORT.default}"
-        elif profile == "cloudrun":
-            registry_url = "https://pending-api.invalid"
-        else:
-            registry_url = f"https://{hostname}:{CoreEnvironment.PORT.default}"
+        registry_url = f"https://{hostname}:{CoreEnvironment.PORT.default}"
 
         database_password_file = (
             self._infrastructure.home
@@ -548,7 +497,7 @@ class DeploymentEnvironmentService:
             }
         )
         explorer = anu_load_explorer_settings(explorer_environment)
-        if profile == "local":
+        if profile in {"local", "cloudflare"}:
             overrides.update(
                 {
                     PlaygroundEnvironment.PUBLIC_URL.name: (
@@ -557,9 +506,7 @@ class DeploymentEnvironmentService:
                     PlaygroundEnvironment.NEBULA_URL.name: (
                         f"https://{hostname}:{CoreEnvironment.PORT.default}"
                     ),
-                    OAuthEnvironment.PUBLIC_URL.name: (
-                        f"https://{hostname}:{OAuthEnvironment.PORT.default}"
-                    ),
+                    OAuthEnvironment.PUBLIC_URL.name: self._oauth_public_url(profile, hostname),
                     PlaygroundEnvironment.HOST.name: "127.0.0.1",
                     PlaygroundEnvironment.BACKEND_PUBLIC_URL.name: (
                         f"http://{hostname}:{PlaygroundEnvironment.BACKEND_PORT.default}"
@@ -603,37 +550,6 @@ class DeploymentEnvironmentService:
             }
         )
         return anu_load_policy_settings(overrides).environment_values()
-
-    def _studio_values(self, profile: str) -> dict[str, str]:
-        """Compose Studio showcase values without defining their environment vocabulary."""
-
-        hostname = self._effective_hostname(profile)
-        if profile == "cloudflare":
-            public_url = "https://agents.agentnebula.ai"
-            nebula_url = "https://api.agentnebula.ai"
-        elif profile == "cloudrun":
-            public_url = "https://pending-studio.invalid"
-            nebula_url = "https://api.agentnebula.ai"
-        else:
-            public_url = f"https://{hostname}:{StudioEnvironment.INGRESS_PORT.default}"
-            nebula_url = f"https://{hostname}:{CoreEnvironment.PORT.default}"
-        return {
-            OAuthEnvironment.PUBLIC_URL.name: self._oauth_public_url(profile, hostname),
-            StudioEnvironment.SHOWCASE.name: self._infrastructure.studio_showcase,
-            StudioEnvironment.PUBLIC_URL.name: public_url,
-            StudioEnvironment.INGRESS_PORT.name: str(StudioEnvironment.INGRESS_PORT.default),
-            StudioEnvironment.SHOWCASE_SANS.name: hostname,
-            StudioEnvironment.NEBULA_URL.name: nebula_url,
-            StudioEnvironment.STATE_BACKEND.name: (
-                StudioEnvironment.STATE_BACKEND.default if profile != "cloudrun" else "firestore"
-            ),
-            StudioEnvironment.CREDENTIAL_BACKEND.name: StudioEnvironment.CREDENTIAL_BACKEND.default,
-            StudioEnvironment.FIRESTORE_PROJECT.name: self._deployment.gcp_project,
-            StudioEnvironment.FIRESTORE_COLLECTION.name: (
-                StudioEnvironment.FIRESTORE_COLLECTION.default
-            ),
-            StudioEnvironment.SECRET_MANAGER_PROJECT.name: self._deployment.gcp_project,
-        }
 
     def _effective_hostname(self, profile: str) -> str:
         """Return the profile hostname used for local direct-TLS endpoints."""

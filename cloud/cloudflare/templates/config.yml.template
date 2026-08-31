@@ -16,8 +16,8 @@ ingress:
       caPool: @NEBULA_HOME@/nebula-ca/certs/root-ca.crt
       connectTimeout: 10s
 
-  - hostname: @PUBLIC_EXPLORER_HOST@
-    service: @EXPLORER_ORIGIN_URL@
+  - hostname: @PUBLIC_OAUTH_HOST@
+    service: @OAUTH_ORIGIN_URL@
     originRequest:
       originServerName: @ORIGIN_SERVER_NAME@
       caPool: @NEBULA_HOME@/nebula-ca/certs/root-ca.crt

@@ -25,6 +25,7 @@ from agent_nebula_utils import (
     HEALTH_ENDPOINTS,
     InitializationForceScope,
     anu_load_core_settings,
+    anu_load_deployment_settings,
     anu_load_explorer_settings,
     anu_load_oauth_settings,
     anu_load_playground_settings,
@@ -447,11 +448,10 @@ class HostDeploymentService:
             print("Agent Nebula Policy health check passed.")
             return
 
-        if infrastructure.deployment_profile == "cloudflare":
-            context = ssl.create_default_context()
-        else:
-            context = ssl.create_default_context(cafile=str(ca_file))
+        local_context = ssl.create_default_context(cafile=str(ca_file))
+        public_context = ssl.create_default_context()
         if product == "playground":
+            context = local_context
             playground = anu_load_playground_settings(environment.values)
             targets = {
                 "container": f"{playground.public_url}{HEALTH_ENDPOINTS.live}",
@@ -473,20 +473,23 @@ class HostDeploymentService:
         explorer = anu_load_explorer_settings(environment.values)
         core_url = environment.values[CoreEnvironment.PUBLIC_API_URL.name].rstrip("/")
         targets = {
-            "core": f"{core_url}{HEALTH_ENDPOINTS.ready}",
-            "console": f"{core.public_ui_url}{HEALTH_ENDPOINTS.live}",
-            "explorer": f"{explorer.public_url}{HEALTH_ENDPOINTS.live}",
+            "core": (f"{core_url}{HEALTH_ENDPOINTS.ready}", public_context),
+            "console": (f"{core.public_ui_url}{HEALTH_ENDPOINTS.live}", public_context),
+            "explorer": (f"{explorer.public_url}{HEALTH_ENDPOINTS.live}", local_context),
         }
+        if infrastructure.deployment_profile != "cloudflare":
+            targets["core"] = (targets["core"][0], local_context)
+            targets["console"] = (targets["console"][0], local_context)
         if component is not None:
             target = targets.get(component)
             if target is None:
                 raise ValueError(f"Health is not defined for component {component!r}")
-            self._probe(target, context)
+            self._probe(*target)
         else:
-            self._probe(targets["core"], context)
-            self._probe(targets["console"], context)
+            self._probe(*targets["core"])
+            self._probe(*targets["console"])
             if self._nonempty(self._explorer_onboarding_key(environment)):
-                self._probe(targets["explorer"], context)
+                self._probe(*targets["explorer"])
         print("Agent Nebula health checks passed.")
 
     def _compose(
@@ -586,11 +589,12 @@ class HostDeploymentService:
         """Require Registry readiness before starting a dependent platform service."""
 
         infrastructure = anu_load_settings(environment.values)
-        core = anu_load_core_settings(environment.values)
+        deployment = anu_load_deployment_settings(environment.values)
         ca_file = self._host_root_ca(environment, infrastructure)
         context = ssl.create_default_context(cafile=str(ca_file))
+        registry_url = f"https://{deployment.local_hostname}:{CoreEnvironment.PORT.default}"
         try:
-            self._probe(f"{core.public_api_url}{HEALTH_ENDPOINTS.ready}", context)
+            self._probe(f"{registry_url}{HEALTH_ENDPOINTS.ready}", context)
         except Exception as exc:
             raise RuntimeError(
                 "Agent Nebula Registry is not ready. Deploy Nebula Core before this service."

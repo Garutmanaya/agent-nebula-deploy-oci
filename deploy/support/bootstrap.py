@@ -31,11 +31,11 @@ from agent_nebula_utils import (
     anu_initialize_runtime_directory,
     anu_issue_local_server_certificate,
     anu_load_core_settings,
+    anu_load_explorer_settings,
     anu_load_oauth_settings,
     anu_load_playground_settings,
     anu_load_policy_settings,
     anu_load_settings,
-    anu_load_studio_settings,
 )
 from agent_nebula_utils.environment import AgentNebulaSettings
 
@@ -105,31 +105,6 @@ class OAuthDeploymentTopology:
         """Return the standalone OAuth Authorization Server directory."""
 
         return AgentNebulaDeploymentTopology(self.settings).oauth
-
-
-@dataclass(frozen=True, slots=True)
-class StudioDeploymentTopology:
-    """Resolve the single Studio showcase instance managed by Deploy."""
-
-    settings: AgentNebulaSettings
-
-    @property
-    def showcase(self) -> DeploymentDirectory:
-        """Return the Studio showcase instance directory using explicit Utils roots."""
-
-        return anu_deployment_directory(
-            product_root=(
-                self.settings.home
-                / self.settings.studio_dir
-                / self.settings.studio_showcase
-            ),
-            runtime_root=(
-                self.settings.runtime_home
-                / self.settings.studio_dir
-                / self.settings.studio_showcase
-            ),
-            settings=self.settings,
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,6 +265,7 @@ class NebulaBootstrapService:
 
         self._settings = anu_load_settings(environment)
         self._core_settings = anu_load_core_settings(environment)
+        self._explorer_settings = anu_load_explorer_settings(environment)
         self._topology = NebulaDeploymentTopology(self._settings)
         self._pki = DeploymentLocalPkiService(self._settings)
         self._openssl = OpenSslExecutor()
@@ -344,10 +320,6 @@ class NebulaBootstrapService:
             self._ensure_database_password(force=force_database)
         if "explorer" in selected:
             self._ensure_explorer_oauth_keys(force=force_secrets)
-
-        profile = self._settings.deployment_profile.lower()
-        if profile in {"cloudrun", "aws"}:
-            return True
 
         # The root CA is shared infrastructure across products/components and is therefore never
         # rotated by a product-scoped init force. Missing CA material is still created normally.
@@ -454,6 +426,10 @@ class NebulaBootstrapService:
         api_host = self._url_hostname(self._core_settings.public_api_url, "Core public API URL")
         ui_host = self._url_hostname(self._core_settings.public_ui_url, "Core public UI URL")
         postgres_host = self._core_settings.database_host
+        explorer_host = self._url_hostname(
+            self._explorer_settings.public_url,
+            "Explorer internal URL",
+        )
         identities = {
             "core": (
                 self._topology.core,
@@ -467,8 +443,8 @@ class NebulaBootstrapService:
             ),
             "explorer": (
                 self._topology.explorer,
-                "explorer.agentnebula.ai",
-                ("nebula-explorer", ui_host, "explorer.agentnebula.ai"),
+                explorer_host,
+                ("nebula-explorer", explorer_host),
             ),
             "database": (
                 self._topology.database,
@@ -537,7 +513,7 @@ class OAuthBootstrapService:
         force_pki = force_scope in {InitializationForceScope.PKI, InitializationForceScope.ALL}
         force_keys = force_scope is InitializationForceScope.ALL
         profile = self._settings.deployment_profile.lower()
-        tls_enabled = self._oauth.tls_enabled and profile not in {"cloudrun", "aws"}
+        tls_enabled = self._oauth.tls_enabled
         security = DeploymentSecurityPaths(directory)
         public_hostname = "oauth.agentnebula.ai"
         configured_hostname = urlparse(self._oauth.public_url).hostname
@@ -637,7 +613,7 @@ class PolicyBootstrapService:
         directory = anu_initialize_durable_directory(self._topology.service)
         force_pki = force_scope in {InitializationForceScope.PKI, InitializationForceScope.ALL}
         profile = self._settings.deployment_profile.lower()
-        tls_enabled = self._policy.tls_enabled and profile not in {"cloudrun", "aws"}
+        tls_enabled = self._policy.tls_enabled
         security = DeploymentSecurityPaths(directory)
         if tls_enabled:
             self._pki.ensure_ca(force=False)
@@ -653,55 +629,6 @@ class PolicyBootstrapService:
             )
 
         # Effective application.conf is container runtime state and is rendered by Policy.
-        return True
-
-
-class StudioBootstrapService:
-    """Initialize the current single-container Agent Nebula Studio showcase deployment."""
-
-    def __init__(self, environment: Mapping[str, str]) -> None:
-        """Resolve shared settings and compose Studio-specific initialization intent."""
-
-        self._settings = anu_load_settings(environment)
-        self._studio_settings = anu_load_studio_settings(environment)
-        self._directory = StudioDeploymentTopology(self._settings).showcase
-        self._pki = DeploymentLocalPkiService(self._settings)
-
-    def initialize(
-        self,
-        *,
-        force_scope: InitializationForceScope | None,
-        component: str | None = None,
-    ) -> bool:
-        """Initialize Studio and only replace PKI when its force scope permits it."""
-
-        if component not in {None, "studio"}:
-            return False
-        if force_scope is InitializationForceScope.DATABASE:
-            return False
-        force_pki = force_scope in {InitializationForceScope.PKI, InitializationForceScope.ALL}
-        anu_initialize_durable_directory(self._directory)
-        profile = self._settings.deployment_profile.lower()
-        if profile in {"cloudrun", "aws"}:
-            return True
-
-        # Studio shares the Agent Nebula root CA; Studio PKI force rotates only its TLS identity.
-        self._pki.ensure_ca(force=False)
-        public_url = self._studio_settings.public_url
-        hostname = urlparse(public_url).hostname
-        if not hostname:
-            raise ValueError(f"Studio public URL has no hostname: {public_url}")
-
-        # Utils owns Studio environment parsing.  ``showcase_sans`` is already a
-        # normalized tuple, so deployment composition must consume it directly
-        # instead of re-parsing the original comma-separated environment value.
-        showcase_sans = self._studio_settings.showcase_sans
-        self._pki.ensure_server_identity(
-            directory=self._directory,
-            common_name=hostname,
-            dns_names=("studio-showcase", hostname, *showcase_sans),
-            force=force_pki,
-        )
         return True
 
 
@@ -737,9 +664,6 @@ class PlaygroundBootstrapService:
             anu_initialize_durable_directory(directory)
 
         profile = self._settings.deployment_profile.strip().lower()
-        if profile in {"cloudrun", "aws"}:
-            return True
-
         force_pki = force_scope in {InitializationForceScope.PKI, InitializationForceScope.ALL}
         self._pki.ensure_ca(force=False)
         public_hostname = "playground.agentnebula.ai"

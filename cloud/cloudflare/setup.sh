@@ -6,13 +6,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ACTION="${1:-init}"
 
 : "${ANU_HOME:?ANU_HOME is required}"
-: "${ANU_DEPLOY_PUBLIC_UI_HOST:?ANU_DEPLOY_PUBLIC_UI_HOST is required}"
-: "${ANU_DEPLOY_PUBLIC_API_HOST:?ANU_DEPLOY_PUBLIC_API_HOST is required}"
-: "${ANU_DEPLOY_PUBLIC_EXPLORER_HOST:?ANU_DEPLOY_PUBLIC_EXPLORER_HOST is required}"
+: "${ANU_CORE_PUBLIC_UI_URL:?ANU_CORE_PUBLIC_UI_URL is required}"
+: "${ANU_CORE_PUBLIC_API_URL:?ANU_CORE_PUBLIC_API_URL is required}"
+: "${ANU_OAUTH_PUBLIC_URL:?ANU_OAUTH_PUBLIC_URL is required}"
+: "${ANU_OAUTH_SERVICE_URL:?ANU_OAUTH_SERVICE_URL is required}"
 : "${ANU_DEPLOY_CLOUDFLARE_TUNNEL_NAME:?ANU_DEPLOY_CLOUDFLARE_TUNNEL_NAME is required}"
 : "${ANU_DEPLOY_CLOUDFLARE_FRONTEND_ORIGIN_URL:?ANU_DEPLOY_CLOUDFLARE_FRONTEND_ORIGIN_URL is required}"
 : "${ANU_DEPLOY_CLOUDFLARE_BACKEND_ORIGIN_URL:?ANU_DEPLOY_CLOUDFLARE_BACKEND_ORIGIN_URL is required}"
-: "${ANU_DEPLOY_CLOUDFLARE_EXPLORER_ORIGIN_URL:?ANU_DEPLOY_CLOUDFLARE_EXPLORER_ORIGIN_URL is required}"
 : "${ANU_DEPLOY_CLOUDFLARE_ORIGIN_SERVER_NAME:?ANU_DEPLOY_CLOUDFLARE_ORIGIN_SERVER_NAME is required}"
 
 CLOUDFLARED_BIN="$(command -v cloudflared || true)"
@@ -35,6 +35,17 @@ resolve_tunnel_id() {
 
 install_tunnel() {
   local service_user service_group tunnel_id credentials_source credentials_target
+  local public_ui_host public_api_host public_oauth_host
+  public_ui_host="${ANU_CORE_PUBLIC_UI_URL#*://}"
+  public_ui_host="${public_ui_host%%/*}"
+  public_ui_host="${public_ui_host%%:*}"
+  public_api_host="${ANU_CORE_PUBLIC_API_URL#*://}"
+  public_api_host="${public_api_host%%/*}"
+  public_api_host="${public_api_host%%:*}"
+  public_oauth_host="${ANU_OAUTH_PUBLIC_URL#*://}"
+  public_oauth_host="${public_oauth_host%%/*}"
+  public_oauth_host="${public_oauth_host%%:*}"
+
   service_user="$ANU_DEPLOY_CLOUDFLARE_SERVICE_USER"
   [[ -n "$service_user" ]] || service_user="${SUDO_USER:-$(id -un)}"
   service_group="$ANU_DEPLOY_CLOUDFLARE_SERVICE_GROUP"
@@ -67,12 +78,12 @@ install_tunnel() {
   sed \
     -e "s|@CLOUDFLARE_TUNNEL_ID@|$tunnel_id|g" \
     -e "s|@CLOUDFLARE_CREDENTIALS_FILE@|$credentials_target|g" \
-    -e "s|@PUBLIC_UI_HOST@|$ANU_DEPLOY_PUBLIC_UI_HOST|g" \
-    -e "s|@PUBLIC_API_HOST@|$ANU_DEPLOY_PUBLIC_API_HOST|g" \
-    -e "s|@PUBLIC_EXPLORER_HOST@|$ANU_DEPLOY_PUBLIC_EXPLORER_HOST|g" \
+    -e "s|@PUBLIC_UI_HOST@|$public_ui_host|g" \
+    -e "s|@PUBLIC_API_HOST@|$public_api_host|g" \
+    -e "s|@PUBLIC_OAUTH_HOST@|$public_oauth_host|g" \
     -e "s|@FRONTEND_ORIGIN_URL@|$ANU_DEPLOY_CLOUDFLARE_FRONTEND_ORIGIN_URL|g" \
     -e "s|@BACKEND_ORIGIN_URL@|$ANU_DEPLOY_CLOUDFLARE_BACKEND_ORIGIN_URL|g" \
-    -e "s|@EXPLORER_ORIGIN_URL@|$ANU_DEPLOY_CLOUDFLARE_EXPLORER_ORIGIN_URL|g" \
+    -e "s|@OAUTH_ORIGIN_URL@|$ANU_OAUTH_SERVICE_URL|g" \
     -e "s|@ORIGIN_SERVER_NAME@|$ANU_DEPLOY_CLOUDFLARE_ORIGIN_SERVER_NAME|g" \
     -e "s|@NEBULA_HOME@|$ANU_HOME|g" \
     "$ROOT/cloud/cloudflare/templates/config.yml.template" > "$ANU_HOME/cloudflare/config.yml"

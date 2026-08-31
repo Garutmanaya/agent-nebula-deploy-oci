@@ -29,7 +29,6 @@ OCI VM
   └── Playground
 ```
 
-Agent Studio can remain on Cloud Run independently.
 
 ## 2. Filesystem contract
 
@@ -305,8 +304,8 @@ Route DNS hostnames to the named tunnel. For the standard deployment:
 
 ```bash
 cloudflared tunnel route dns agent-nebula agentnebula.ai
-cloudflared tunnel route dns agent-nebula api.agentnebula.ai
-cloudflared tunnel route dns agent-nebula explorer.agentnebula.ai
+cloudflared tunnel route dns agent-nebula registry.agentnebula.ai
+cloudflared tunnel route dns agent-nebula oauth.agentnebula.ai
 ```
 
 Then configure host integration from `/opt/agent-nebula/deploy`:
