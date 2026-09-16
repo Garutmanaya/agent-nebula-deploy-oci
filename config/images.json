@@ -50,8 +50,8 @@
       "context": ".",
       "build_contexts": {
         "agent_nebula_sdk": "../agent-nebula-sdk",
-        "agent_nebula_runtime": "../agent-nebula-runtime",
-        "agent_nebula_connect": "../agent-nebula-connect",
+        "agent_nebula_platform": "../agent-nebula-platform",
+        "agent_nebula_secureagent": "../agent-nebula-secureagent",
         "agent_nebula_utils": "../agent-nebula-utils"
       },
       "enabled": true

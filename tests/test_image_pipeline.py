@@ -45,6 +45,29 @@ class ImagePipelineTests(unittest.TestCase):
         self.assertEqual(defaults["platforms"], ["linux/arm64"])
         self.assertIn("agent_nebula_policy_sdk", policy.build_contexts)
 
+    def test_explorer_manifest_uses_secureagent_build_contexts(self) -> None:
+        """Build Explorer from the migrated SecureAgent/Platform dependency graph."""
+
+        root = Path(__file__).parents[1]
+        repository = ImageConfigurationRepository(
+            root / "config" / "images.json",
+            root / "config" / "registry.json",
+        )
+        _, specs = repository.load_manifest()
+        explorer = next(item for item in specs if item.name == "explorer")
+
+        self.assertEqual(
+            explorer.build_contexts,
+            {
+                "agent_nebula_sdk": "../agent-nebula-sdk",
+                "agent_nebula_platform": "../agent-nebula-platform",
+                "agent_nebula_secureagent": "../agent-nebula-secureagent",
+                "agent_nebula_utils": "../agent-nebula-utils",
+            },
+        )
+        self.assertNotIn("agent_nebula_runtime", explorer.build_contexts)
+        self.assertNotIn("agent_nebula_connect", explorer.build_contexts)
+
     def test_all_selects_all_enabled_images(self) -> None:
         """The all selector must exclude explicitly disabled images."""
 
