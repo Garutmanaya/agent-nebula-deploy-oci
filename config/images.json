@@ -40,7 +40,10 @@
       "image": "nebula-console",
       "dockerfile": "docker/nebula-console/Dockerfile",
       "context": ".",
-      "enabled": true
+      "enabled": true,
+      "build_contexts": {
+        "agent_nebula_a2ui": "../agent-nebula-a2ui"
+      }
     },
     {
       "name": "explorer",
@@ -52,7 +55,8 @@
         "agent_nebula_sdk": "../agent-nebula-sdk",
         "agent_nebula_platform": "../agent-nebula-platform",
         "agent_nebula_secureagent": "../agent-nebula-secureagent",
-        "agent_nebula_utils": "../agent-nebula-utils"
+        "agent_nebula_utils": "../agent-nebula-utils",
+        "agent_nebula_a2ui": "../agent-nebula-a2ui"
       },
       "enabled": true
     },
