@@ -11,6 +11,7 @@ from agent_nebula_utils.environment.definitions import (
     ConsoleEnvironment,
     CoreEnvironment,
     ExplorerEnvironment,
+    LlmEnvironment,
     OAuthEnvironment,
     PolicyEnvironment,
 )
@@ -80,6 +81,17 @@ def test_local_and_oci_application_values_differ_only_in_security_source(environ
     assert differences == {"DEPLOY_SECURITY_SOURCE_ROOT"}
     assert local["DEPLOY_SECURITY_SOURCE_ROOT"] == environment_root["ANU_HOME"]
     assert oci["DEPLOY_SECURITY_SOURCE_ROOT"] == "/run/agent-nebula-security-staging"
+
+
+def test_explorer_input_mapper_model_is_written_to_nebula_environment(environment_root) -> None:
+    """Explorer model is operator-configurable through the generated nebula.env contract."""
+
+    environment = dict(environment_root)
+    environment[LlmEnvironment.INPUT_MAPPER_MODEL.name] = "gpt-5.4-mini"
+
+    nebula = _generate(environment, DeploymentTarget.LOCAL, "local", "nebula")
+
+    assert nebula[LlmEnvironment.INPUT_MAPPER_MODEL.name] == "gpt-5.4-mini"
 
 
 def test_component_init_reuses_existing_product_environment() -> None:

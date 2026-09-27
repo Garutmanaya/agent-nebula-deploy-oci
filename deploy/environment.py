@@ -34,6 +34,7 @@ from agent_nebula_utils.environment.definitions import (
     ExplorerEnvironment,
     FilesystemEnvironment,
     InfrastructureEnvironment,
+    LlmEnvironment,
     OAuthEnvironment,
     PlaygroundEnvironment,
     PolicyEnvironment,
@@ -412,6 +413,7 @@ class DeploymentEnvironmentService:
             OAuthEnvironment.SERVICE_URL.name: environment[OAuthEnvironment.SERVICE_URL.name],
             OAuthEnvironment.PUBLIC_URL.name: environment[OAuthEnvironment.PUBLIC_URL.name],
             PolicyEnvironment.SERVICE_URL.name: environment[PolicyEnvironment.SERVICE_URL.name],
+            LlmEnvironment.INPUT_MAPPER_MODEL.name: self._infrastructure.llm_input_mapper_model,
         }
         values.update(anu_load_core_settings(environment).environment_values())
         values.update(anu_load_console_settings(environment).environment_values())
