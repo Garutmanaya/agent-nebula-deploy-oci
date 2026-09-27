@@ -152,6 +152,8 @@ class DeploymentEnvironmentService:
             "DEPLOY_SECURITY_STAGING_ROOT": "/run/agent-nebula-security-staging",
             InfrastructureEnvironment.DEPLOYMENT_PROFILE.name: profile,
             InfrastructureEnvironment.RUNTIME_MODE.name: "local",
+            InfrastructureEnvironment.CONSOLE_LOGGING.name: str(self._infrastructure.console_logging).lower(),
+            InfrastructureEnvironment.LOG_LEVEL.name: self._infrastructure.log_level,
             DeploymentEnvironment.CONTAINER_UID.name: str(self._deployment.container_uid),
             DeploymentEnvironment.CONTAINER_GID.name: str(self._deployment.container_gid),
             DeploymentEnvironment.IMAGE_SOURCE.name: self._target.image_source,
