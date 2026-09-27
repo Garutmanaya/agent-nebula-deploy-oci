@@ -139,6 +139,12 @@ class AgentNebulaDeploymentTopology:
         return self.playground_component("ui")
 
     @property
+    def core_llm_api_key(self) -> Path:
+        """Return the canonical Core-owned durable LLM API-key path."""
+
+        return self.core.secrets / "llm" / "api-key"
+
+    @property
     def database_credentials(self) -> DatabaseCredentialPaths:
         """Return database credential paths with explicit component ownership."""
 
